@@ -82,6 +82,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   frame.style.setProperty('--day-tilt',recipe.tilt+'deg');
   frame.style.setProperty('--day-duration',recipe.interval+'ms');
   frame.dataset.motion=recipe.motion;
+  el('hero').dataset.mood=recipe.mood;
   frame.classList.toggle('is-still',Boolean(ctx.reducedMotion));
   for (const id of ['prev','next','scrub']) el(id).hidden=photos.length<2;
   el('mute').hidden=!audio && audioLink?.provider!=='youtube';

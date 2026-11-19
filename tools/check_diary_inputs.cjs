@@ -64,6 +64,24 @@ async function saveAndReadCard(page) {
     await story.fill('A quiet moon over the still lake.');
     const mood = page.locator('[data-ed-scene]');
     assert.equal(await mood.innerText(), 'Тихое');
+    const gradient = locator => locator.evaluate(el => getComputedStyle(el).backgroundImage);
+    const preview = page.locator('[data-ed-mini]');
+    const hero = page.locator('[data-card="hero"]');
+    const custom = page.locator('.ed-custom > summary');
+    const choice = page.locator('[data-ed-mood]');
+    const quiet = await gradient(preview);
+    const palette = new Map();
+    await custom.click();
+    for (const name of ['quiet','bright','tender','restless']) {
+      await choice.selectOption(name);
+      const background = await gradient(preview);
+      assert.match(background, /gradient\(/, name + ' renders a gradient');
+      palette.set(name, background);
+    }
+    assert.equal(new Set(palette.values()).size, 4, 'Each mood has a distinct card background');
+    assert.equal(palette.get('quiet'), quiet);
+    await choice.selectOption('');
+    assert.equal(await gradient(preview), quiet, 'Automatic mode restores the colour inferred from the entry');
 
     const colors = ['#c87a34', '#36739c'];
     const photos = await Promise.all(colors.map(color => solidPhoto(page, color)));
@@ -74,10 +92,12 @@ async function saveAndReadCard(page) {
     await uploadTempo(page, 75);
     const first = await saveAndReadCard(page);
     assert.equal(first.color, colors[0]);
+    assert.equal(await gradient(hero), quiet);
 
     await page.getByRole('button', {name:'Изменить день', exact:true}).click();
     await story.fill('We dance with joy and laugh together.');
     assert.equal(await mood.innerText(), 'Радостное');
+    assert.equal(await gradient(preview), palette.get('bright'));
     assert.equal(await wash(), colors[0], 'Changing the words keeps the photo colour');
     await page.locator('[data-ed-select="1"]').click();
     await page.getByRole('button', {name:'На обложку', exact:true}).click();
@@ -86,8 +106,15 @@ async function saveAndReadCard(page) {
     await uploadTempo(page, 125);
     const second = await saveAndReadCard(page);
     assert.equal(second.color, colors[1]);
+    assert.equal(await gradient(hero), palette.get('bright'));
     assert.notEqual(second.motion, first.motion, 'The story changes the published motion treatment');
     assert.ok(first.duration > second.duration && second.duration > 0, 'The faster recording advances frames sooner');
+    await page.getByRole('button', {name:'Изменить день', exact:true}).click();
+    await custom.click();
+    await choice.selectOption('tender');
+    await saveAndReadCard(page);
+    await page.reload();
+    assert.equal(await gradient(hero), palette.get('tender'), 'The chosen colour survives saving and reopening');
     assert.deepEqual(errors, []);
     console.log(engine + ': text changed motion ' + first.motion + ' → ' + second.motion +
       ', cover changed colour ' + first.color + ' → ' + second.color +

@@ -49,6 +49,15 @@ function readMood(text) {
   return best;
 }
 
+function entryMood(day) {
+  return Object.hasOwn(moods,day.moodOverride) ? day.moodOverride : readMood(clean(day.text));
+}
+
+export function postcardMood(day) {
+  const saved = day.status === 'ready' && day.recipe?.version === 1 ? day.recipe.mood : undefined;
+  return Object.hasOwn(moods,saved) ? saved : entryMood(day);
+}
+
 const fallbackTitles = {
   ru:['Один день из жизни','День в памяти'],
   kk:['Есте қалған бір күн','Күннен қалған естелік'],
@@ -89,7 +98,7 @@ export function makeRecipe(day = {}) {
   const sentences = text.match(/[^.!?…]+[.!?…]*/gu)?.map(clean).filter(Boolean) || [];
   const title = clean(day.titleOverride) || titleFrom(sentences,storyLanguage(day));
   const caption = clean(day.captionOverride) || excerpt(sentences.find((s,i) => i>0 && s.length >= 12) || sentences[0] || '',135);
-  const mood = Object.hasOwn(moods,day.moodOverride) ? day.moodOverride : readMood(text);
+  const mood = entryMood(day);
   const photoColor = day.photos?.[0]?.color || '';
   const color = /^#[\da-f]{6}$/i.test(photoColor) ? photoColor : '#85a7d2';
   const music=day.music || {};
@@ -109,7 +118,7 @@ export function presentRecipe(day) {
   const saved=day.status==='ready' && day.recipe?.version===1 ? day.recipe : null;
   if (!saved) return derived;
   const numeric=(v,fallback,min,max)=>Number.isFinite(v)?limit(v,min,max):fallback;
-  const mood=Object.hasOwn(moods,saved.mood) ? saved.mood : derived.mood;
+  const mood=postcardMood(day);
   return describe(day,{
     ...derived,
     title:clean(saved.title) || clean(day.title) || derived.title,

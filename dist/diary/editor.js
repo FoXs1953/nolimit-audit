@@ -282,6 +282,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     img.hidden=!src;img.alt=pic?.name || '';
     img.style.objectPosition=limited(pic?.x??50,0,100)+'% '+limited(pic?.y??50,0,100)+'%';
     mini.style.setProperty('--ed-wash',/^#[a-f\d]{6}$/i.test(recipe.color) ? recipe.color : '#1855c9');
+    mini.dataset.mood=recipe.mood;
     mini.style.setProperty('--ed-tilt',(Number(recipe.tilt) || 0)+'deg');
     $('[data-ed-scene]').textContent=recipe.moodLabel;
     $('[data-ed-print-date]').textContent=validDate(draft.date) ? formatDate(draft.date,{day:'numeric',month:'short'}) : '';

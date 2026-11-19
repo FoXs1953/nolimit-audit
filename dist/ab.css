@@ -6,7 +6,7 @@
 .ab-view button:disabled { cursor:default; opacity:.3; }
 .ab-view button:not(:disabled) { transition:transform .28s cubic-bezier(.22,.75,.26,1),background-color .19s,color .19s,box-shadow .19s; }
 .ab-view button:not(:disabled):active { transform:scale(.972); transition-duration:85ms; }
-.ab-hero { isolation:isolate; overflow:hidden; border-radius:28px; display:grid; grid-template-columns:minmax(0,1fr) minmax(190px,.82fr); align-items:center; position:relative; min-height:286px; color:#fff; background:radial-gradient(ellipse at 86% 20%,#4d91ff 0%,rgba(57,117,255,.25) 40%,transparent 68%),linear-gradient(116deg,#123fbd 2%,#1b55e2 54%,#2876f1 100%); box-shadow:0 8px 19px -14px #1b48a7; }
+.ab-hero { isolation:isolate; overflow:hidden; border-radius:28px; display:grid; grid-template-columns:minmax(0,1fr) minmax(190px,.82fr); align-items:center; position:relative; min-height:286px; color:#fff; box-shadow:0 8px 19px -14px #1b48a7; }
 .ab-hero-copy { z-index:2; max-width:500px; padding:clamp(25px,3.6vw,48px); padding-right:0; }
 .ab-meta { display:flex; align-items:center; gap:8px; color:#f0f5ff; font-size:.83rem; font-weight:600; }
 .ab-record-mark { position:relative; display:block; width:13px; height:13px; border-radius:50%; border:1.25px solid #d1e1ff; }

@@ -43,7 +43,7 @@
 .ed-panel [data-ed-current-file]:not(:empty){margin-bottom:12px}
 .ed-panel [data-ed-link-action]{margin:10px 0 0;font-size:.88rem;line-height:1.5;color:#576277}
 .ed-panel [data-ed-link-action] a{display:inline-flex;align-items:center;min-height:44px;color:var(--blue)}
-.ed-mini{position:relative;isolation:isolate;min-height:205px;overflow:hidden;border-radius:19px;display:grid;grid-template-columns:minmax(0,1fr) minmax(68px,.48fr);align-items:center;gap:13px;padding:20px;color:#fff;background:radial-gradient(ellipse at 86% 20%,#4d91ff 0%,#3975ff40 40%,transparent 68%),linear-gradient(116deg,#123fbd 2%,#1b55e2 54%,#2876f1 100%)}
+.ed-mini{position:relative;isolation:isolate;min-height:205px;overflow:hidden;border-radius:19px;display:grid;grid-template-columns:minmax(0,1fr) minmax(68px,.48fr);align-items:center;gap:13px;padding:20px;color:#fff}
 .ed-mini-copy{min-width:0}.ed-mini-copy small{display:block;margin-bottom:11px;font-size:.77rem;color:#e7efff;font-weight:600}
 .ed-mini-copy strong{display:block;font-size:clamp(1.22rem,2.1vw,2rem);letter-spacing:-.049em;line-height:1.09;overflow-wrap:anywhere}
 .ed-mini-copy p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-top:8px;font-size:.86rem;line-height:1.42;overflow-wrap:anywhere;color:#edf3ff}

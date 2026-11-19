@@ -1,3 +1,4 @@
+import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage, getLocale} from './i18n.js';
 import {t} from './locales/views.js';
@@ -75,7 +76,7 @@ export function mountLibrary(root, records, examples, ctx) {
     grid.innerHTML = filtered.map(day => {
       const image = photo(day);
       const copies = variants.get(day.date).length;
-      return '<article class="library-item panel"><button class="library-open" data-id="' + esc(day.id) + '">' +
+      return '<article class="library-item panel" data-mood="' + postcardMood(day) + '"><button class="library-open" data-id="' + esc(day.id) + '">' +
         (image ? '<img class="library-photo" loading="lazy" src="' + esc(image) + '" alt="">' : '<span class="library-photo empty-cover">'+icon('pen',30)+'</span>') +
         '<span class="library-copy"><small>' + esc(formatDate(day.date)) +
         (day.status !== 'ready' ? ' · '+t('draft') : '') + '</small><strong>' + esc(label(day)) +

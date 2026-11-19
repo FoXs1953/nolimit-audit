@@ -1,3 +1,4 @@
+import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage} from './i18n.js';
 import {t} from './locales/views.js';
@@ -10,7 +11,9 @@ export function mountHome(root, days, ctx) {
   const date = localDate();
   const entry = days.find(day => day.date === date && day.primary !== false);
   const hasDraft = entry && (entry.status !== 'ready' || entry.pendingEdit);
-  const personalPhoto = (entry?.pendingEdit || entry)?.photos?.[0];
+  const personalDay = entry?.pendingEdit || entry;
+  const personalMood = personalDay && postcardMood(personalDay);
+  const personalPhoto = personalDay?.photos?.[0];
   const personalUrl = personalPhoto?.blob ? URL.createObjectURL(personalPhoto.blob) : personalPhoto?.src;
   const action = t(entry ? hasDraft ? 'continueEntry' : 'openToday' : 'writeDay');
   const recent = days.filter(day => day.status === 'ready' && day.primary !== false)
@@ -48,6 +51,7 @@ export function mountHome(root, days, ctx) {
   }
   function paint() {
     const day = demos[index];
+    find('.ab-hero').dataset.mood = personalMood || postcardMood(day);
     find('[data-cover]').src = personalUrl || day.photos[0].src;
     find('[data-cover-label]').textContent = formatDate(personalUrl ? entry.date : day.date);
     find('[data-open]').textContent = day.title;
