@@ -363,9 +363,17 @@ async function journey(browser, site) {
   await go(lena, 'friends/responses');
   await lena.page.locator('.fh-response-text').filter({ hasText: second }).waitFor();
   assert.equal(await lena.page.getByText(mine[0].title, { exact: true }).count(), 0);
-  await lena.page.locator('[data-act=comment]').click();
-  await lena.page.locator('[data-act=confirm-response]').click();
-  await lena.page.locator('[data-act=comment]').waitFor({ state: 'detached' });
+  const commentAction = lena.page.locator('.fh-response').filter({ hasText: second }).locator('[data-act=comment]');
+  const commentId = await commentAction.getAttribute('data-id');
+  await commentAction.click();
+  const [deleted] = await Promise.all([
+    lena.page.waitForResponse(r => r.request().method() === 'DELETE' &&
+      new URL(r.url()).pathname === apiRoot + '/my-responses/comment/' + commentId),
+    lena.page.locator('[data-act=confirm-response]').click()
+  ]);
+  assert.equal(deleted.status(), 200);
+  assert.deepEqual(await deleted.json(), { deleted: true });
+  await lena.page.locator('#fh-content .fh-title + .fh-state').waitFor();
   assert.deepEqual((await read(lena, '/my-responses')).comments, []);
 
   await go(author, 'friends/people');

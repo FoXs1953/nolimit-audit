@@ -56,7 +56,7 @@ export function openAccess(ctx,{day,publicationId}){
     const release=()=>{for(const url of previews) URL.revokeObjectURL(url);previews=[];};
     const dialog=host.closest('dialog');
     dialog?.addEventListener('close',release,{once:true});
-    async function start(){
+    async function start(notice=''){
       release();
       try{
         const session=await api('/session');
@@ -69,13 +69,14 @@ export function openAccess(ctx,{day,publicationId}){
         let binding=day?await publicationLink(day.id):null;
         if (binding && binding.ownerId!==session.user.id) throw Object.assign(new Error(t('otherOwner')),{display:true});
         let pubId=publicationId || binding?.id;
-        const [people,publication]=await Promise.all([api('/people'),pubId?api('/publications/'+pubId).catch(err=>{
+        const expectedAccount={headers:{'X-NoLimit-Account':session.user.id}};
+        const [people,publication]=await Promise.all([api('/people',expectedAccount),pubId?api('/publications/'+pubId,expectedAccount).catch(err=>{
           if(err.status===404 && day)return null;
           throw err;
         }):null]);
         if(!root.isConnected)return;
         if(publication && publication.owner.id!==session.user.id)throw Object.assign(new Error(t('otherOwner')),{display:true});
-        if(publication && day && binding && (!binding.confirmed || binding.mode!==publication.mode))await rememberPublication(day.id,pubId,publication.mode);
+        if(publication && day && binding)await rememberPublication(day.id,pubId,publication.mode,publication.accessVersion);
         if(!publication && binding?.confirmed){await forgetPublication(day.id,binding.id);binding=null;pubId=null;}
         if(!publication && (!day || day.status!=='ready' || !day.text?.trim() || !day.photos?.length || !day.music))throw Object.assign(new Error(t('notReady')),{display:true});
         const version=publication?.accessVersion || 0, contentVersion=publication?.contentVersion || 0;
@@ -91,13 +92,18 @@ export function openAccess(ctx,{day,publicationId}){
         root.innerHTML='<form data-sharing-form><p class="social-as">'+esc(t('as',{name:session.user.name}))+'</p><details class="share-preview" '+(!publication?'open':'')+'><summary>'+esc(t('preview'))+'</summary><div class="share-preview-inner"><strong>'+esc(recipe.title || source.title)+'</strong><p>'+esc(source.text)+'</p><div class="share-images">'+pictures.map(url=>'<img src="'+esc(url)+'" alt="">').join('')+'</div><span>'+icon('music',16)+esc(source.music?.kind==='link'?source.music.name || t('track'):t('track'))+'</span></div></details>'+
           '<fieldset class="social-audience"><legend>'+esc(t('audience'))+'</legend>'+['private','all','selected'].map(choice).join('')+'</fieldset>'+
           '<p data-mode-hint></p><div data-recipient-area><label>'+esc(t('find'))+'<input type="search" class="day-field" data-find-person></label>'+
-          (candidates?'<div class="social-friend-list">'+candidates+'</div><p data-count></p>':'<p>'+esc(t('none'))+'</p><button class="secondary" type="button" data-people>'+esc(t('people'))+'</button>')+'</div>'+
+          (candidates?'<div class="social-friend-list">'+candidates+'</div><p data-count aria-live="polite"></p>':'<p>'+esc(t('none'))+'</p><button class="secondary" type="button" data-people>'+esc(t('people'))+'</button>')+'</div>'+
           (day?.music?.kind==='file'?'<fieldset class="share-song"><legend>'+esc(t('track'))+'</legend><select aria-label="'+esc(t('track'))+'" data-song><option value="file">'+esc(t('file'))+'</option><option value="link">'+esc(t('link'))+'</option></select><label hidden data-url-label>'+esc(t('link'))+'<input class="day-field" type="url" data-url placeholder="https://"></label><p>'+esc(t('rights'))+'</p></fieldset>':'')+
           '<p data-message role="status"></p><div class="social-actions"><button class="primary" data-save-access type="submit">'+esc(t(publication?'save':'publish'))+'</button>'+
           (day && publication?'<button type="button" class="secondary" data-update>'+esc(t('refresh'))+'</button>':'')+
           '<button type="button" class="secondary" data-cancel>'+esc(t('close'))+'</button></div>'+
           (publication?'<div class="share-remove"><button type="button" class="social-danger" data-remove>'+esc(t('remove'))+'</button><div hidden data-confirm><p>'+esc(t('removeInfo'))+'</p><button type="button" class="social-danger" data-remove-yes>'+esc(t('remove'))+'</button> <button type="button" class="secondary" data-remove-no>'+esc(t('keep'))+'</button></div></div>':'')+'</form>';
         const form=root.querySelector('form'), get=s=>root.querySelector(s), message=get('[data-message]');
+        if(notice)message.textContent=notice;
+        if(get('[data-song]') && publication?.day.music?.kind==='link'){
+          get('[data-song]').value='link';
+          get('[data-url]').value=publication.day.music.url;
+        }
         let busy=false,prepared=null;
         const ids=()=>[...form.querySelectorAll('[name=recipient]:checked')].map(node=>node.value);
         function sync(){
@@ -146,17 +152,31 @@ export function openAccess(ctx,{day,publicationId}){
                 prepared={config,ready,operationId:crypto.randomUUID()};
               }
               const stored=await api('/publications/'+pubId,{method:'PUT',headers:{'X-NoLimit-Account':session.user.id},body:{day:prepared.ready,mode:value,recipientIds,contentVersion,operationId:prepared.operationId}});
-              await rememberPublication(day.id,pubId,stored.mode);
+              await rememberPublication(day.id,pubId,stored.mode,stored.accessVersion);
             }else{
               const stored=await api('/publications/'+pubId+'/access',{method:'PATCH',headers:{'X-NoLimit-Account':session.user.id},body:{mode:value,recipientIds,accessVersion:version}});
-              if(day)await rememberPublication(day.id,pubId,stored.mode);
+              if(day)await rememberPublication(day.id,pubId,stored.mode,stored.accessVersion);
             }
             changed();ctx.toast(t(kind==='update'?'updated':'saved'));if(root.isConnected)ctx.closeSheet();
           }catch(error){
             if(!root.isConnected)return;
             message.textContent=error.display?error.message:socialError(error);
             if(error.status===409 || !error.status || error.status>=500){
-              const retry=document.createElement('button');retry.className='secondary';retry.type='button';retry.textContent=t('retry');retry.onclick=start;message.append(' ',retry);
+              message.textContent=t('checking');
+              try{
+                if(pubId) {
+                  const current=await api('/publications/'+pubId,expectedAccount).catch(err=>{if(err.status===404)return null;throw err;});
+                  if(!root.isConnected)return;
+                  if(!current && kind==='remove'){
+                    if(day)await forgetPublication(day.id,pubId);
+                    changed();ctx.toast(t('deleted'));ctx.closeSheet();return;
+                  }
+                  if(current || day){await start(t(error.status===409?'actualAudience':'rechecked'));return;}
+                }
+              }catch{}
+              if(!root.isConnected)return;
+              message.textContent=socialError(error);
+              const retry=document.createElement('button');retry.className='secondary';retry.type='button';retry.textContent=t('retry');retry.onclick=()=>start();message.append(' ',retry);
             }
             busyState(false);
           }
@@ -170,7 +190,7 @@ export function openAccess(ctx,{day,publicationId}){
         }
         sync();
       }catch(error){
-        if(root.isConnected){root.innerHTML='<p role="alert"></p><button type="button" class="secondary">'+esc(t('retry'))+'</button>';root.querySelector('p').textContent=error.display?error.message:socialError(error);root.querySelector('button').onclick=start;}
+        if(root.isConnected){root.innerHTML='<p role="alert"></p><button type="button" class="secondary">'+esc(t('retry'))+'</button>';root.querySelector('p').textContent=error.display?error.message:socialError(error);root.querySelector('button').onclick=()=>start();}
       }
     }
     start();

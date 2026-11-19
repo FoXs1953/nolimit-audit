@@ -167,4 +167,5 @@
   .fh .fh-tabs [aria-current="page"]:hover { background-color: #fff; }
 }
 .fh :is(button,a.primary):not(:disabled):active { box-shadow: inset 0 0 0 2px #122c5459; }
-.fh :disabled { cursor: wait; }
+.fh :disabled { cursor: not-allowed; }
+.fh[aria-busy="true"] :disabled { cursor: wait; }
