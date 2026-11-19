@@ -56,12 +56,15 @@ export function mountLibrary(root, records, examples, ctx) {
   }
   function personalCard(day) {
     const image = photo(day);
+    const pigment = day.photos?.[0]?.color;
+    const coverStyle = typeof pigment === 'string' && /^#[a-f\d]{6}$/i.test(pigment)
+      ? ' style="--cover-pigment:'+pigment+'"' : '';
     const descriptionId='gallery-day-'+day.id;
     const draft = day.status !== 'ready';
     const note = visibleDayNotes(day).at(-1);
     const copies = variants.get(day.date).length;
     const dateLabel = esc(formatDate(day.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
-    return '<article class="personal-card" data-mood="'+postcardMood(day)+'">'+
+    return '<article class="personal-card" data-mood="'+postcardMood(day)+'"'+coverStyle+'>'+
       '<button type="button" class="personal-open" data-id="'+esc(day.id)+'">'+
       '<span class="day-cover'+(image?'':' paper-cover')+'">'+
       (image?'<img src="'+esc(image)+'" loading="lazy" alt="">':'')+
