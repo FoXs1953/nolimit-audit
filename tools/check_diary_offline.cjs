@@ -47,11 +47,14 @@ async function interruptibleOrigin(upstream) {
     await page.locator('[data-id="'+id+'"]').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#view img')].some(img=>img.complete && img.naturalWidth));
     await page.getByRole('button',{name:'Қазақша',exact:true}).click();
+    await page.getByRole('button',{name:'Ашықхатты жандандыру',exact:true}).waitFor();
     await page.getByRole('heading',{name:title,exact:true}).waitFor();
     await page.getByRole('button',{name:'English',exact:true}).click();
+    await page.getByRole('button',{name:'Play postcard',exact:true}).waitFor();
     await page.getByRole('heading',{name:title,exact:true}).waitFor();
     await page.reload({waitUntil:'domcontentloaded'});
     await page.getByRole('heading',{name:title,exact:true}).waitFor();
+    await page.getByRole('button',{name:'Play postcard',exact:true}).waitFor();
     const audio = await page.evaluate(async () => {
       const response = await fetch('./diary/media/leaves.mp3',{headers:{Range:'bytes=0-23'}});
       return [response.status, (await response.arrayBuffer()).byteLength,response.headers.get('content-range')];
