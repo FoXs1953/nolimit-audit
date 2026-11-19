@@ -17,9 +17,11 @@ async function saveProfile(db, id, request) {
   if (!/[\p{L}\p{N}\p{S}\p{P}]/u.test(name) || [...name].length > 60 ||
       /[\p{Cc}\u202a-\u202e\u2066-\u2069]/u.test(name)) fail(400, 'invalid_name');
 
+  const setup=request.headers.get('X-NoLimit-Setup')==='1';
+  const conflict=setup?'DO NOTHING':'DO UPDATE SET name = excluded.name';
   const upsert = db.prepare(`
     INSERT INTO profiles (id, name, code) VALUES (?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET name = excluded.name
+    ON CONFLICT (id) ${conflict}
     ON CONFLICT (code) DO NOTHING
     RETURNING ${profileColumns}
   `);
@@ -27,6 +29,10 @@ async function saveProfile(db, id, request) {
     const code = crypto.randomUUID().slice(0, 8).toUpperCase();
     const profile = await upsert.bind(id, name, code).first();
     if (profile) return session(profile);
+    if (setup) {
+      const existing=await lookupProfile(db,id);
+      if (existing)return session(existing);
+    }
   }
   fail(503, 'profile_code_unavailable');
 }

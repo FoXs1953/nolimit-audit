@@ -1,6 +1,6 @@
 // Run on a GitHub-hosted browser runner against the built Worker and ephemeral D1/R2.
 const assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { readFile, readdir } = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
@@ -36,6 +36,8 @@ async function serve(mf) {
       }
       // Only this loopback test gateway maps an opaque fixture cookie to a Sites identity.
       const token = /(?:^|;\s*)nolimit_test_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
+      const appCookies = (req.headers.cookie || '').split(';').map(part => part.trim()).filter(part => part && !part.startsWith('nolimit_test_session='));
+      if (appCookies.length) headers.set('Cookie', appCookies.join('; '));
       const actor = identities.get(token);
       if (actor) {
         headers.set('oai-authenticated-user-id', actor);
@@ -80,24 +82,65 @@ async function serve(mf) {
   };
 }
 
-async function person(browser, site, actor, name, language, width, errors) {
+async function person(browser, site, name, language, width, errors, hash = 'friends') {
   const ctx = await browser.newContext({ viewport: { width, height: 850 }, locale: { ru: 'ru-RU', kk: 'kk-KZ', en: 'en-GB' }[language] });
-  await ctx.addCookies([site.cookieFor(actor)]);
   await ctx.addInitScript(lang => { localStorage.setItem('nolimit:language', lang); }, language);
   const page = await ctx.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.setDefaultTimeout(12000);
-  await page.goto(site.origin + '/#friends');
-  const form = page.locator('[data-name-form]');
+  const url = site.origin + '/#' + hash;
+  await page.goto(url);
+  const form = page.locator('form').filter({ has: page.locator('input[name=name]') });
+  await form.waitFor();
+  assert.equal(await page.locator('a[href*="signin-with-chatgpt"]').count(), 0);
   await form.locator('[name=name]').fill(name);
-  await form.locator('[type=submit]').click();
-  await page.locator('[data-act=profile]').waitFor();
-  const session = await (await ctx.request.get(site.origin + apiRoot + '/session')).json();
-  assert.equal(session.user.name, name);
-  assert.deepEqual(Object.keys(session.user).sort(), ['code', 'id', 'name']);
+  const [reply] = await Promise.all([
+    page.waitForResponse(r => r.request().method()==='POST' && new URL(r.url()).pathname===apiRoot+'/profile'),
+    form.locator('[type=submit]').click()
+  ]);
+  assert.equal(reply.status(), 200, 'First profile saves without a platform session');
+  await form.waitFor({state:'detached'});
+  assert.equal(page.url(), url);
+  const user = (await reply.json()).user;
+  assert.equal(user.name, name);
+  assert.deepEqual(Object.keys(user).sort(), ['code', 'id', 'name']);
+  const actor = { page, ctx, name, id: user.id, origin: site.origin, site };
+  assert.deepEqual((await read(actor, '/session')).user, user);
   assert.equal(await page.locator('html').getAttribute('lang'), language);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'Friends fits ' + width + 'px');
-  return { page, ctx, name, id: session.user.id, origin: site.origin, site };
+  return actor;
+}
+
+async function remembered(actor) {
+  await go(actor,'friends');
+  await actor.page.reload();
+  await actor.page.locator('[data-act=profile]').waitFor();
+  assert.equal(await actor.page.locator('[data-name-form]').count(), 0);
+  assert.equal(await actor.page.evaluate(() => localStorage.getItem('nolimit:friends:name')), actor.name);
+  const tab = await actor.ctx.newPage();
+  try {
+    await tab.goto(actor.origin + '/#friends/people');
+    await tab.locator('[data-act=profile]').click();
+    await tab.locator('.fh-profile-name').getByText(actor.name, { exact: true }).waitFor();
+    assert.equal((await read({...actor,page:tab}, '/session')).user.id, actor.id);
+  } finally { await tab.close(); }
+}
+
+async function checkLegacyProfile(mf, browser, site) {
+  const oldPlatformId = 'existing-site-member';
+  const id = createHash('sha256').update('nolimit-arttech-friends:v1:' + oldPlatformId).digest('hex');
+  const user = {id, name:'До обновления', code:'22EE44BB'};
+  const db = await mf.getD1Database('DB');
+  await db.prepare('INSERT INTO profiles(id,name,code) VALUES(?,?,?)').bind(id, user.name, user.code).run();
+  const ctx = await browser.newContext();
+  try {
+    await ctx.addCookies([site.cookieFor(oldPlatformId)]);
+    const page = await ctx.newPage();
+    await page.goto(site.origin+'/#friends');
+    await page.locator('[data-act=profile]').click({timeout:12000});
+    await page.locator('.fh-profile-name').getByText(user.name, {exact:true}).waitFor();
+    assert.deepEqual((await read({ctx,page,origin:site.origin}, '/session')).user,user);
+  } finally { await ctx.close(); }
 }
 
 async function go(actor, hash) {
@@ -310,20 +353,18 @@ async function changeAccess(author, publication, mode, selected = [], checkCance
   await saveAccess(author, mode, selected, false);
 }
 
-async function updateOnSecondDevice(browser, author, publication, recipients, errors) {
+async function updateInAnotherTab(author, publication, recipients, errors) {
   await go(author, 'friends/mine');
   await author.page.locator('[data-act=access][data-id="' + publication + '"]').click();
   const stale = author.page.locator('[data-sharing-form]');
   await stale.locator('[name=audience][value=all]').check();
 
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await author.ctx.newPage();
   try {
-    await ctx.addCookies([author.site.cookieFor('author')]);
-    const page = await ctx.newPage();
     page.setDefaultTimeout(12000);
     page.on('pageerror', error => errors.push(error.message));
-    await changeAccess({ ...author, page, ctx }, publication, 'selected', recipients, true);
-  } finally { await ctx.close(); }
+    await changeAccess({ ...author, page }, publication, 'selected', recipients, true);
+  } finally { await page.close(); }
 
   await author.page.bringToFront();
   const attempted = author.page.waitForResponse(r => r.request().method() === 'PATCH' &&
@@ -389,9 +430,18 @@ async function journey(browser, site) {
   const errors = [];
   const signedOut = await fetch(site.origin + apiRoot + '/session');
   assert.deepEqual(await signedOut.json(), { authenticated: false, user: null });
-  const author = await person(browser, site, 'author', 'Аня', 'ru', 1150, errors);
-  const ilya = await person(browser, site, 'ilya', 'Илья', 'en', 320, errors);
-  const lena = await person(browser, site, 'lena', 'Лена', 'kk', 390, errors);
+  const author = await person(browser, site, 'Аня', 'ru', 1150, errors);
+  await remembered(author);
+  const ilya = await person(browser, site, 'Илья', 'en', 320, errors);
+  const welcome = await (await api(author,'/invites',{method:'POST'})).json();
+  const lena = await person(browser, site, 'Лена', 'kk', 390, errors, 'friends/invite/'+welcome.token);
+  const send = lena.page.locator('[data-act=send-request]');
+  await send.waitFor();
+  assert.deepEqual((await read(author,'/people')).incoming, []);
+  await send.click();
+  await lena.page.locator('[data-act=cancel-request]').waitFor();
+  assert.equal((await read(author,'/people')).incoming[0].person.id, lena.id);
+  assert.equal((await api(author,'/invites/current?token='+welcome.token,{method:'DELETE'})).status(), 200);
   await keyboardNavigation(author);
   await checkInviteLifecycle(author, ilya, lena);
   await requestControls(author, lena);
@@ -411,11 +461,28 @@ async function journey(browser, site) {
   const published = await read(ilya, card);
   const cover = published.day.photos[0].src, audio = published.day.music.src;
   const protectedPaths = [card, card + '/discussion', cover, audio];
+  const namesake = await person(browser, site, ilya.name, 'ru', 390, errors, 'shared/'+id);
+  try {
+    assert.notEqual(namesake.id, ilya.id, 'The same display name has no bearing on identity');
+    assert.deepEqual((await read(namesake, '/people')).friends, []);
+    assert.deepEqual((await read(namesake, '/feed')).days, []);
+    await denied(namesake, protectedPaths);
+    const unavailable = await namesake.page.evaluate(async () => (await import('/diary/locales/sharing.js')).shareText('missing'));
+    await namesake.page.getByRole('heading',{name:unavailable,exact:true}).waitFor();
+    assert.equal(await namesake.page.locator('[data-discussion]').count(), 0);
+    assert.equal(await namesake.page.getByText(mine[0].title,{exact:true}).count(),0);
+  } finally { await namesake.ctx.close(); }
   assert.deepEqual((await read(lena, '/feed')).days, []);
   await denied(lena, protectedPaths);
 
+  // The device key remains in this browser if its shorter-lived media cookie needs renewing.
+  assert.equal((await fetch(site.origin + audio, {method:'HEAD'})).status,401);
+  await ilya.ctx.clearCookies();
   await go(ilya, 'friends/person/' + author.id);
   const profileEntry = ilya.page.locator('.fh-day').filter({ hasText: mine[0].title });
+  await profileEntry.waitFor();
+  assert.equal((await read(ilya, '/session')).user.id,ilya.id);
+  assert.equal((await api(ilya,cover)).status(),200);
   await profileEntry.focus();
   await profileEntry.press('Enter');
   await ilya.page.locator('[data-discussion]').waitFor();
@@ -445,7 +512,7 @@ async function journey(browser, site) {
   const first = 'Тёплый день у реки.';
   await leaveComment(ilya, first, true);
 
-  await updateOnSecondDevice(browser, author, id, [ilya.id, lena.id], errors);
+  await updateInAnotherTab(author, id, [ilya.id, lena.id], errors);
   await go(lena, 'friends');
   await lena.page.locator('.fh-day').filter({ hasText: mine[0].title }).click();
   await lena.page.locator('[data-discussion]').getByText(first, { exact: true }).waitFor();
@@ -518,6 +585,7 @@ async function journey(browser, site) {
     }
     assert.ok(['chromium', 'webkit'].includes(engine));
     browser = await (engine === 'webkit' ? webkit : chromium).launch(launch);
+    await checkLegacyProfile(mf, browser, site);
     await journey(browser, site);
   } finally {
     await browser?.close();

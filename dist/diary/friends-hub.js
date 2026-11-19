@@ -2,7 +2,8 @@ import {formatDate, getLanguage, getLocale} from './i18n.js';
 import {t} from './locales/friends-hub.js';
 import {galleryThumbnail} from './ui.js';
 import {shareText} from './locales/sharing.js';
-import {api, signInUrl} from './social-api.js';
+import {api, getCachedProfileName, saveProfileName} from './social-api.js';
+import {profileNameError, profileNameForm, readProfileName, updateNameInput} from './profile-name.js';
 
 function initials(name) {
   const words = String(name || '').trim().split(/\s+/u);
@@ -47,7 +48,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
   let paneTrigger = '';
   let targetId = '';
   let query = '';
-  let nameDraft = '';
+  let nameDraft = getCachedProfileName();
   let actionError = '';
   let restore = viewState;
   let restoreFrame;
@@ -58,7 +59,6 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
   const avatar = (person, large = false) =>
     '<span aria-hidden="true" class="fh-avatar'+(large?' fh-avatar-lg':'')+'">'+esc(initials(person.name))+'</span>';
   const identity = person => avatar(person)+'<span class="fh-identity"><strong>'+esc(person.name)+'</strong><small>'+esc(person.code)+'</small></span>';
-  const linkToSignIn = () => '<a class="primary" target="_top" data-fid="signin" title="'+esc(t('provider'))+'" href="'+esc(signInUrl())+'">'+esc(t('signIn'))+'</a>';
   const art = () => '<div class="fh-letter" aria-hidden="true"><i></i><b><span></span></b></div>';
   const stateBox = (title, hint = '', action = '', motif = '') =>
     '<section class="fh-state panel">'+(motif === 'letter' ? art() : motif ? '<span class="fh-mark">'+icon(motif,25)+'</span>' : '')+
@@ -96,19 +96,13 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
       button('dismiss',t(buttonLabel),{style:'fh-icon',symbol:'close'})+'</header>'+html+'</section>';
   }
 
-  function nameForm() {
-    return '<form class="fh-form" data-name-form novalidate><label for="fh-name">'+esc(t('yourName'))+'</label>'+
-      '<input id="fh-name" name="name" type="text" autocomplete="nickname" required data-fid="name-field" value="'+esc(nameDraft)+'">'+
-      '<p>'+esc(t('nameHint'))+'</p><button class="primary" type="submit" data-fid="save-name">'+esc(t('saveName'))+'</button></form>';
-  }
-
   function activePane() {
     if (pane==='profile') {
       return panel(t('profile'),'<div class="fh-profile-name">'+identity(signed())+'</div><div class="fh-menu">'+
         goButton('friends/mine','mine','fh-menu-link')+goButton('friends/responses','responses','fh-menu-link')+
         button('edit-name',t('editName'),{style:'fh-menu-link',symbol:'pen'})+'</div>');
     }
-    if (pane==='name') return panel(t('editName'),nameForm());
+    if (pane==='name') return panel(t('editName'),profileNameForm('fh-name',nameDraft));
     if (pane==='add') {
       const invite = model.people?.invite;
       if (!invite) return panel(t('add'),'<p>'+esc(t('inviteHint'))+'</p><p>'+esc(t('inviteTiming'))+'</p>'+
@@ -197,8 +191,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     if (!invite?.person) return stateBox(t('unavailable'),t('newInvite'),'','clock');
     const inviter = invite.person;
     let title = t('inviteFrom',{name:inviter.name}), hint = '', actions = '';
-    if (!model.session.authenticated) actions = linkToSignIn();
-    else if (!signed()) actions = nameForm();
+    if (!signed()) actions = profileNameForm('fh-name',nameDraft);
     else switch (invite.status) {
       case 'pending':
         title = t('pending'); hint=t('pendingHint');
@@ -242,8 +235,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
       return '<p class="fh-loading" role="status">'+esc(t('loading'))+'</p>';
     }
     if (page==='invite') return invitePage();
-    if (!model.session.authenticated) return stateBox(t('hello'),t('signHint'),linkToSignIn(),'letter');
-    if (!signed()) return '<section class="fh-panel panel"><h2>'+esc(t('chooseName'))+'</h2>'+nameForm()+'</section>';
+    if (!signed()) return '<section class="fh-panel panel"><h2>'+esc(t('chooseName'))+'</h2>'+profileNameForm('fh-name',nameDraft)+'</section>';
     const panelMarkup = activePane();
     if (panelMarkup) return panelMarkup;
     if (page==='people') return people();
@@ -294,7 +286,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
       if (reader.signal.aborted) return;
       accountId=session.user?.id;
       if (model && model.session.user?.id!==session.user?.id) {
-        model=null; snapshot=null; pane=''; query=''; nameDraft=''; targetId=''; actionError='';
+        model=null; snapshot=null; pane=''; query=''; nameDraft=getCachedProfileName(); targetId=''; actionError='';
         paint();
       }
       const next = {session};
@@ -361,13 +353,14 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     let complete=false;
     try {
       const session = await api('/session',{signal:controller.signal});
-      if (!session.authenticated || session.user?.id!==signed()?.id) throw Object.assign(new Error('account_changed'),{code:'account_changed'});
+      if (session.user?.id!==signed()?.id || (!session.user && path!=='/profile')) throw Object.assign(new Error('account_changed'),{code:'account_changed'});
       const headers=session.user ? {'X-NoLimit-Account':session.user.id} : {};
-      await api(path,{method,body:options.body,headers,signal:controller.signal});
+      if (path==='/profile') await saveProfileName(options.body.name,{headers,signal:controller.signal});
+      else await api(path,{method,body:options.body,headers,signal:controller.signal});
       complete=true;
     } catch (error) {
       if (!alive||controller.signal.aborted) return;
-      actionError=error.code==='invalid_name'?'simpleName':'actionFailed';
+      actionError=profileNameError(error) || 'actionFailed';
       if (error.code==='account_changed') ctx.toast(t('accountChanged'));
     } finally {
       if (writing===controller) writing=null;
@@ -380,7 +373,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     snapshot=null;
     await refresh();
     if (!alive) return;
-    if (!complete) return focus(actionError==='simpleName'?'name-field':actionFocus,true);
+    if (!complete) return focus(actionError==='invalidName'?'name-field':actionFocus,true);
     if (options.to) ctx.go(options.to);
     else focus(options.focus || actionFocus || paneTrigger,true);
   }
@@ -449,19 +442,16 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     }
     if (event.target.matches('[name="name"]')) {
       nameDraft=event.target.value;
-      event.target.setCustomValidity('');
+      updateNameInput(event.target);
     }
   }
 
   function submit(event) {
     if (!event.target.matches('[data-name-form]')) return;
     event.preventDefault();
-    const field=event.target.elements.name;
-    const name=field.value.normalize('NFC').trim();
-    if (!name || Array.from(name).length>60) {
-      field.setCustomValidity(t(!name?'simpleName':'nameLength')); field.reportValidity(); return;
-    }
-    mutate('/profile','POST','savedName',{body:{name},nextPane:pane==='name'?'profile':'',focus:pane==='name'?'pane-title':'add:'});
+    const name=readProfileName(event.target);
+    if (!name) return;
+    mutate('/profile','POST','savedName',{body:{name},nextPane:pane==='name'?'profile':'',focus:pane==='name'?'pane-title':page==='invite'?'send-request:':'add:'});
   }
 
   function keydown(event) {

@@ -1,4 +1,5 @@
-import {api,signInUrl} from './social-api.js';
+import {api,saveProfileName} from './social-api.js';
+import {profileNameError,profileNameForm,readProfileName,updateNameInput} from './profile-name.js';
 import {mountPlayer} from './player.js';
 import {forgetPanels,hidePanel} from './ui.js';
 import {getLocale,formatDate} from './i18n.js';
@@ -76,13 +77,11 @@ export function mountSharedDay(root,id,ctx,viewState={}) {
     if (next===page) return;
     stopPrivateView();
     page=next;
-    const message={loading:t('loading'),offline:t('waiting'),login:d('accessSignIn'),profile:t('needProfile'),missing:t('missing')};
+    const message={loading:t('loading'),offline:t('waiting'),profile:t('needProfile'),missing:t('missing')};
     const copy=(next==='missing' || next==='offline') && draft.trim();
     root.innerHTML='<div class="social-actions">'+back()+'</div><section class="social-discussion sd-state panel">'+
       '<h2 tabindex="-1" data-state-title>'+esc(message[next])+'</h2>'+
-      (next==='login' ? '<a class="primary" target="_top" href="'+esc(signInUrl())+'">'+esc(t('login'))+'</a>' : '')+
-      (next==='profile' ? '<form data-profile-form><label>'+esc(peopleText('yourName'))+
-        '<input name="name" autocomplete="nickname" required></label><button class="primary" type="submit">'+esc(t('setup'))+'</button></form>' : '')+
+      (next==='profile' ? profileNameForm('sd-name') : '')+
       (next==='offline' || next==='missing' ? buttons(t('retry'),'data-retry') : '')+
       (copy ? '<label>'+esc(d('draft'))+'<textarea data-draft-copy rows="3" readonly></textarea></label>'+buttons(t('copyDraft'),'data-copy') : '')+
       '<p role="status" aria-live="polite" data-status></p></section>';
@@ -178,14 +177,14 @@ export function mountSharedDay(root,id,ctx,viewState={}) {
   }
   function disconnect(next) {
     cancelRead();cancelWrite();clearTimeout(timer);
-    if (next==='login' || next==='profile') {resetDraft();actor=null;}
+    if (next==='profile') {resetDraft();actor=null;}
     showState(next);
     schedule();
   }
   function handleError(error) {
     if (error.code==='account_changed') {
       resetDraft();actor=null;disconnect('loading');playerState={};void refresh();
-    } else if (error.status===401) disconnect('login');
+    } else if (error.status===401) disconnect('profile');
     else if (error.code==='profile_required') disconnect('profile');
     else if (denied(error)) disconnect('missing');
     else disconnect('offline');
@@ -203,7 +202,7 @@ export function mountSharedDay(root,id,ctx,viewState={}) {
     try {
       const session=await signalRequest('/session',{},ctrl);
       if (!alive || reader!==ctrl) return;
-      if (!session.authenticated || !session.user) {disconnect(session.authenticated?'profile':'login');return;}
+      if (!session.user) {disconnect('profile');return;}
       if (verifying && actor!==session.user.id) cancelWrite();
       setActor(session.user.id);
       if (verifying && writer===verifying) {
@@ -234,7 +233,7 @@ export function mountSharedDay(root,id,ctx,viewState={}) {
       if (writer!==ctrl || !alive) return;
       if (session.user?.id!==owner) {
         resetDraft();setActor(session.user?.id || null);
-        disconnect(session.user?'loading':session.authenticated?'profile':'login');
+        disconnect(session.user?'loading':'profile');
         if (session.user) void refresh();
         return;
       }
@@ -267,16 +266,32 @@ export function mountSharedDay(root,id,ctx,viewState={}) {
   }
   async function createProfile(form) {
     if (writer) return;
-    const field=form.elements.name, name=field.value.trim(), button=form.querySelector('button');
-    if (!name || lengthOf(name)>60) {status(peopleText(name?'nameLength':'simpleName'));field.focus();return;}
-    const ctrl=new AbortController();writer=ctrl;button.disabled=true;
+    const field=form.elements.name, button=form.querySelector('button'), name=readProfileName(form);
+    if (!name) return;
+    cancelRead();
+    const ctrl=new AbortController();writer=ctrl;
+    form.setAttribute('aria-busy','true');field.disabled=true;button.disabled=true;
+    status(peopleText('busy'));
     try {
-      await signalRequest('/profile',{method:'POST',body:{name}},ctrl);
-      if (alive && writer===ctrl) {writer=null;await refresh();}
-    } catch(error) {if (alive && writer===ctrl) status(error.code==='invalid_name'?peopleText('simpleName'):t('network'));}
-    finally {if (writer===ctrl) {writer=null;button.disabled=false;}}
+      await saveProfileName(name,{signal:AbortSignal.any([ctrl.signal,AbortSignal.timeout(15000)])});
+      if (alive && writer===ctrl) {
+        writer=null;await refresh();
+        if (alive) (find('[data-state-title]') || find('[data-shared-back]'))?.focus({preventScroll:true});
+      }
+    } catch(error) {
+      if (!alive || writer!==ctrl) return;
+      const detail=profileNameError(error);
+      status(detail?peopleText(detail):t('network'));
+      if (error.code==='account_changed') {writer=null;await refresh();}
+    } finally {
+      if (writer===ctrl) writer=null;
+      if (form.isConnected) {
+        form.removeAttribute('aria-busy');field.disabled=false;updateNameInput(field);
+      }
+    }
   }
   root.addEventListener('input',e=>{
+    if (e.target.matches('[data-profile-form] [name=name]')) updateNameInput(e.target);
     if (e.target.matches('textarea[name=comment]')) {draft=e.target.value;draftOwner=actor;controls();}
   },opts);
   root.addEventListener('submit',e=>{
