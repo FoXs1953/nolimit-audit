@@ -40,8 +40,7 @@ async function uploadTempo(page, bpm) {
 }
 
 async function saveAndReadCard(page) {
-  await page.getByRole('button', {name:'Собрать открытку', exact:true}).click();
-  await page.getByRole('button', {name:'Сохранить день', exact:true}).click();
+  await page.getByRole('button', {name:'Сохранить открытку', exact:true}).click();
   await page.waitForURL(/#day\//);
   return page.locator('.diary-card').evaluate(card => ({
     color:card.style.getPropertyValue('--day-paper'),

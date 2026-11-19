@@ -15,7 +15,7 @@ export const artText = translator({
   color:['Оттенок обложки {color} перешёл на край отпечатка и поля. Точка кадрирования сохраняет выбранную деталь.','Мұқабаның {color} реңкі суреттің жиегі мен жақтауында қайталанады. Кадрда өзің таңдаған тұс көрінеді.','The {color} tone from the cover tints the print’s edge and border. The crop keeps your chosen detail in view.'],
   missingColor:['Палитра появится после выбора обложки.','Мұқабаны таңдағанда оның түстері осында көрінеді.','Choose a cover to see its palette.'],
   manualTempo:['Темп задан тобой','Қарқынды өзің таңдадың','You set the pace'],
-  linkTempo:['Темп взят из выбранного характера песни','Қарқын әнге таңдаған сипатқа сай қойылды','The song character you chose sets the pace'],
+  linkTempo:['В открытке сохранена ссылка на песню','Ашықхатта әнге сілтеме сақталған','The postcard includes a link to the song'],
   measuredTempo:['Темп музыки — {bpm} уд/мин','Музыканың қарқыны минутына {bpm} соққы','The track plays at {bpm} beats per minute'],
   energyTempo:['Ритм выбран по энергии дорожки','Ырғақ әуеннің екпініне сай таңдалды','The track’s energy sets the rhythm'],
   time:['На один кадр отведено {seconds} с.','Әр кадр {seconds} с көрсетіледі.','Each frame lasts {seconds} s.']

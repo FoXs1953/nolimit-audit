@@ -73,14 +73,14 @@ function describe(day,recipe) {
   const treatment=t(moods[recipe.mood].motion);
   const music=day.music || {};
   const measured=Number(music.bpm);
-  const tempoSource=Object.hasOwn(energyTempo,day.rhythmOverride) ? 'manualTempo' : music.kind==='link' ? 'linkTempo' :
+  const tempoSource=Object.hasOwn(energyTempo,day.rhythmOverride) ? 'manualTempo' :
     Number.isFinite(measured) && measured>=35 && measured<=245 ? 'measuredTempo' : 'energyTempo';
   const fmt=new Intl.NumberFormat(getLocale(),{maximumFractionDigits:1});
   const lower=value=>value.toLocaleLowerCase(getLocale());
   return {...recipe,moodLabel,treatment,reasons:{
     text:t(Object.hasOwn(moods,day.moodOverride)?'chosen':'inferred',{mood:lower(moodLabel)})+' '+t('technique',{technique:lower(treatment)}),
     photo:day.photos?.length ? t('color',{color:recipe.color.toUpperCase()}) : t('missingColor'),
-    music:t(tempoSource,{bpm:fmt.format(recipe.bpm)})+'. '+t('time',{seconds:fmt.format(recipe.interval/1000)})
+    music:music.kind==='link' ? t('linkTempo') : t(tempoSource,{bpm:fmt.format(recipe.bpm)})+'. '+t('time',{seconds:fmt.format(recipe.interval/1000)})
   }};
 }
 
