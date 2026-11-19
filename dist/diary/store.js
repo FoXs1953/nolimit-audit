@@ -17,7 +17,7 @@ const MAX_AUDIO = 25 * MIB;
 const blobHashes = new WeakMap();
 const blobBytes = new WeakMap();
 const demoFiles = new Map();
-const storageKeys = new Set(['revision','updatedAt','primary','_contentHash','_originId']);
+const storageKeys = new Set(['revision','updatedAt','primary','_contentHash','_originId','_noteSeed','_removedNotes']);
 const imageTypes = new Set(['image/jpeg','image/png','image/webp','image/heic','image/heif','image/heic-sequence','image/heif-sequence','image/avif','image/gif']);
 const audioTypes = new Set(['audio/mpeg','audio/mp3','audio/aac','audio/mp4','audio/x-m4a','audio/m4a','audio/wav','audio/wave','audio/x-wav','audio/vnd.wave','audio/ogg','audio/webm','audio/flac','audio/x-flac']);
 const DEMO_PATH = /^(?:\.\/|\/)?diary\/media\/[a-z\d][\w.-]{0,100}\.(?:jpe?g|png|webp|avif|wav|mp3|m4a|ogg)$/i;
@@ -156,6 +156,8 @@ function checkRecord(row, partial=false) {
 }
 function normalizeRecord(input) {
   const row = structuredClone(input);
+  delete row._removedNotes;
+  if (row.pendingEdit) clearNoteMetadata(row.pendingEdit);
   // Blob content is immutable. Keep its object identity so frequent text autosaves can
   // reuse the digest of a large attachment, without sharing mutable record fields.
   function retainBlobs(copy,source) {
@@ -235,6 +237,7 @@ function decodeDay(row) {
     return {...meta,blob};
   }
   const day={...row};
+  delete day._removedNotes;
   if (day.photos) day.photos=day.photos.map(decode);
   if (day.music?.kind==='file') day.music=decode(day.music);
   if (day.pendingEdit) day.pendingEdit=decodeDay(day.pendingEdit);
@@ -283,60 +286,101 @@ function attachMoments(day,moments) {
   day.moments=moments;
   if (day.pendingEdit) day.pendingEdit={...day.pendingEdit,moments};
 }
+function clearNoteMetadata(day) {
+  delete day._noteSeed;
+  delete day._removedNotes;
+}
+function noteHash(note) { return digest(strToU8(momentKey(note))); }
+function sameVersion(a,b) {
+  const left=a?._removedNotes || [], right=b?._removedNotes || [];
+  return a?.id===b?.id && a?.revision===b?.revision && a?._contentHash===b?._contentHash &&
+    a?._noteSeed===b?._noteSeed && left.length===right.length && left.every((hash,i)=>hash===right[i]);
+}
+// Old quick-note drafts have no seed marker. Recognize the simple, untouched
+// draft the old capture form created. Editor autosaves also carry musicMode.
+function legacySeed(day) {
+  if (day?.status!=='draft' || !day.revision || Object.hasOwn(day,'_noteSeed') || day.musicMode ||
+      day.title || day.caption || day.photos?.length || day.music || !day.text) return;
+  return visibleDayNotes(day).find(note=>note.text===day.text);
+}
 export async function saveDay(input) {
-  const normalized=normalizeRecord(input);
-  attachMoments(normalized,visibleDayNotes(normalized));
-  // The editor can remain open while another tab appends a note. Include any
-  // new notes before hashing the revision, without treating them as competing edits.
+  const submitted=normalizeRecord(input);
+  const incoming=visibleDayNotes(submitted);
+  let hashes;
+  const oldSeed=legacySeed(submitted);
+  const submittedSeed=submitted._noteSeed || (oldSeed && await noteHash(oldSeed));
   for (;;) {
-    const [checksum,row]=await Promise.all([contentHash(normalized),encodeDay(normalized)]);
+    const current=await read('get',submitted.id);
+    const day={...submitted};
+    const removed=new Set(current?._removedNotes);
+    if (removed.size && !hashes) {
+      hashes=new Map(await Promise.all(incoming.map(async note=>[momentKey(note),await noteHash(note)])));
+    }
+    const retained=removed.size ? incoming.filter(note=>!removed.has(hashes.get(momentKey(note)))) : incoming;
+    attachMoments(day,mergeMoments(retained,visibleDayNotes(current)));
+    // An editor may autosave its original snapshot several times after a note
+    // was removed. Only replace text that still matches its automatic seed.
+    const seed=submittedSeed || (!Object.hasOwn(submitted,'_noteSeed') && current?._noteSeed);
+    if (day.status==='draft' && seed && removed.has(seed) &&
+        incoming.some(note=>hashes.get(momentKey(note))===seed && note.text===day.text)) {
+      day.text=current?.status==='draft' ? current.text : '';
+    }
+    const prior=current || submitted;
+    const priorLegacy=legacySeed(prior);
+    day._noteSeed=day.status==='draft' && day.text===prior.text
+      ? prior._noteSeed || (priorLegacy && await noteHash(priorLegacy)) || null : null;
+    safeTree(day);
+    const [checksum,row]=await Promise.all([contentHash(day),encodeDay(day)]);
     const result=await write((rows,store)=>{
-      const current=rows.get(row.id);
-      const existingNotes=visibleDayNotes(current);
-      const known=new Set(row.moments.map(momentKey));
-      if (existingNotes.some(note=>!known.has(momentKey(note)))) {
-        return {missing:existingNotes};
-      }
-      const conflict=current && (current.revision || 0) !== (row.revision || 0);
-      if (conflict && current._contentHash===checksum) return {stored:current};
+      const latest=rows.get(row.id);
+      if (!sameVersion(latest,current)) return;
+      const conflict=latest && (latest.revision || 0) !== (row.revision || 0);
+      if (conflict && latest._contentHash===checksum) return latest;
       if (conflict) row.id=crypto.randomUUID();
       const sameDate=Array.from(rows.values()).filter(other=>other.id!==row.id && other.date===row.date);
-      row.primary=!conflict && (current?.date===row.date ? current.primary : !sameDate.some(other=>other.primary));
+      row.primary=!conflict && (latest?.date===row.date ? latest.primary : !sameDate.some(other=>other.primary));
       if (!sameDate.length) row.primary=true;
-      row.revision=(conflict ? 0 : current?.revision || 0)+1;
+      row.revision=(conflict ? 0 : latest?.revision || 0)+1;
       row.updatedAt=new Date().toISOString();
       row._contentHash=checksum;
+      if (latest?._removedNotes?.length) row._removedNotes=latest._removedNotes;
       store.put(row);
       rows.set(row.id,row);
-      if (current && !conflict && current.date!==row.date && current.primary) nextPrimary(current.date,rows,store);
-      return {stored:row};
+      if (latest && !conflict && latest.date!==row.date && latest.primary) nextPrimary(latest.date,rows,store);
+      return row;
     });
-    if (result.stored) return decodeDay(result.stored);
-    attachMoments(normalized,mergeMoments(normalized.moments,result.missing));
-    safeTree(normalized);
+    if (result) return decodeDay(result);
   }
 }
 export async function appendDayMoment(blank,moment) {
   const seed=normalizeRecord(blank);
   if (!validId(moment?.id) || typeof moment.text!=='string' || !moment.text.trim() ||
       moment.text.length>1200 || !Number.isFinite(Date.parse(moment.time))) throw bad(t('invalidMoments'));
+  const key=await noteHash(moment);
   const primary=rows=>Array.from(rows.values()).find(day=>day.date===seed.date && day.primary!==false);
   for (;;) {
     const current=await write(rows=>primary(rows),false,seed.date);
     const day=current ? decodeDay(current) : {...seed};
     const notes=visibleDayNotes(day);
-    if(notes.some(note=>note.id===moment.id)) return day;
+    if(current?._removedNotes?.includes(key) || notes.some(note=>note.id===moment.id)) return day;
+    if (!Object.hasOwn(day,'_noteSeed')) {
+      const previous=legacySeed(day);
+      day._noteSeed=previous ? await noteHash(previous) : null;
+    }
     attachMoments(day,mergeMoments(notes,[moment]));
-    if(day.status==='draft' && !day.text?.trim()) day.text=moment.text;
+    if(day.status==='draft' && !day.text?.trim()) {
+      day.text=moment.text;
+      day._noteSeed=key;
+    }
     safeTree(day);checkRecord(day);
     const [hash,row]=await Promise.all([contentHash(day),encodeDay(day)]);
     const saved=await write((rows,store)=>{
       const latest=primary(rows);
-      if (latest?.id!==current?.id || latest?._contentHash!==current?._contentHash ||
-          latest?.revision!==current?.revision) return null;
+      if (!sameVersion(latest,current)) return null;
       // A note is additive. An open editor keeps its valid revision and saveDay
       // merges the note with its next content change.
       row.primary=true;row.revision=current?.revision || 1;
+      if (latest?._removedNotes?.length) row._removedNotes=latest._removedNotes;
       row.updatedAt=new Date().toISOString();row._contentHash=hash;
       store.put(row);
       return row;
@@ -344,6 +388,44 @@ export async function appendDayMoment(blank,moment) {
     if(saved) return decodeDay(saved);
   }
 }
+async function changeDayNote(id,note,restore) {
+  const key=momentKey(note), hash=await noteHash(note);
+  for (;;) {
+    const current=await read('get',id);
+    if (!current) return restore ? false : null;
+    const day=decodeDay(current);
+    const notes=visibleDayNotes(day);
+    const existing=notes.find(item=>momentKey(item)===key);
+    if (restore && existing) return true;
+    if (!restore && !existing) return null;
+    const oldSeed=legacySeed(day);
+    if (oldSeed) day._noteSeed=await noteHash(oldSeed);
+    attachMoments(day,restore ? mergeMoments(notes,[note]) : notes.filter(item=>momentKey(item)!==key));
+    if (day.status==='draft' && day._noteSeed===hash) {
+      if (!restore && day.text===existing.text) day.text='';
+      if (restore && day.text==='') day.text=note.text;
+    }
+    safeTree(day);checkRecord(day);
+    const [checksum,row]=await Promise.all([contentHash(day),encodeDay(day)]);
+    const saved=await write((rows,store)=>{
+      const latest=rows.get(id);
+      if (!sameVersion(latest,current)) return false;
+      // Keep only opaque identities locally so old editor saves cannot restore
+      // removed notes. Undo merges a single note and forgets its tombstone.
+      const removed=new Set(latest._removedNotes);
+      if (restore) removed.delete(hash); else removed.add(hash);
+      if (removed.size) row._removedNotes=[...removed];
+      row.primary=latest.primary;
+      row._contentHash=checksum;
+      row.updatedAt=new Date().toISOString();
+      store.put(row);
+      return true;
+    },true,current.date);
+    if (saved) return restore ? true : existing;
+  }
+}
+export function removeDayNote(id,note) { return changeDayNote(id,note,false); }
+export function restoreDayNote(id,note) { return changeDayNote(id,note,true); }
 export async function removeDay(id) {
   return decodeDay(await write((rows,store)=>{
     const removed=rows.get(id);
@@ -406,6 +488,7 @@ export async function exportZip(records) {
       const {src,blob,...meta}=asset;
       return {...meta, archiveFile:name, mediaType:type};
     });
+    clearNoteMetadata(out);
     delete out._contentHash;
     const json=strToU8(JSON.stringify(out));
     if (json.length>MAX_JSON) throw bad(t('textSize'));
@@ -502,6 +585,7 @@ export async function inspectZip(file) {
       const {mediaType:rawType,archiveFile,...meta}=asset;
       return {...meta,blob:assets.get(key)};
     });
+    clearNoteMetadata(record);
     delete record._contentHash;
     if (record._originId && !validId(record._originId)) delete record._originId;
     const row=normalizeRecord(record);
@@ -516,6 +600,7 @@ async function merge(records, commit) {
   const validated=[];
   for (const input of records) {
     const row=normalizeRecord(input);
+    clearNoteMetadata(row);
     row._contentHash=await contentHash(row);
     validated.push(await encodeDay(row));
   }

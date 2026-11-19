@@ -87,7 +87,67 @@ async function main() {
         updated.moments.length===5 && updated.pendingEdit.moments.length===5,'A new note must reach both views while preserving unpublished changes');
       const roundtrip=await db.inspectZip(await db.exportZip([updated]));
       check((await db.assessImport(roundtrip)).skipped===1 && db.visibleDayNotes(roundtrip[0]).length===5,'Backup and duplicate detection must preserve appended notes');
-      return 'versions, photos, audio, pending edits, backup preview, ZIP restore, duplicate import, corruption, drafts, concurrent and published-day notes';
+      // Seed a historical row directly through import, which preserves a pending-only note without an ID.
+      const legacyId='legacy-pending';
+      await db.importDays([{...updated,id:legacyId,date:'2026-11-28',moments:[firstNote],
+        pendingEdit:{...updated.pendingEdit,moments:[firstNote,oldNote,oldNote]}}]);
+      const legacyEditor=await db.getDay(legacyId);
+      const removed=await db.removeDayNote(legacyId,{...oldNote});
+      let current=await db.getDay(legacyId);
+      check(removed?.text===oldNote.text && db.visibleDayNotes(current).length===1 &&
+        current.pendingEdit.moments.length===1 && current.text===updated.text &&
+        current.pendingEdit.text===updated.pendingEdit.text,'Remove must find old pending notes and preserve both stories');
+      check(await db.removeDayNote(legacyId,oldNote)===null,'Removing an absent note must be harmless');
+      current=await db.saveDay({...legacyEditor,pendingEdit:{...legacyEditor.pendingEdit,caption:'Новое описание'}});
+      check(current.moments.length===1 && current.pendingEdit.moments.length===1 &&
+        current.pendingEdit.caption==='Новое описание','A stale pending edit must respect removal of a note without an ID');
+      const exported=await db.exportZip([current]);
+      const zipText=await exported.text();
+      check(!zipText.includes(oldNote.text) && !zipText.includes('_removedNotes') && !zipText.includes('_noteSeed'),
+        'Deleted text and internal metadata must stay out of the archive');
+      check((await db.assessImport(await db.inspectZip(exported))).skipped===1,'Duplicate detection must ignore local note metadata');
+      check(await db.restoreDayNote(legacyId,removed) && await db.restoreDayNote(legacyId,removed) &&
+        db.visibleDayNotes(await db.getDay(legacyId)).length===2,'Restoring an old note twice must add one copy');
+
+      const quickDate='2026-11-29', blank={id:'quick-seed',date:quickDate,status:'draft'};
+      const quick=await db.appendDayMoment(blank,firstNote);
+      const next=await db.appendDayMoment(blank,secondNote);
+      const [deletedSeed]=await Promise.all([db.removeDayNote(quick.id,firstNote),
+        db.appendDayMoment(blank,note('note-f','Соседняя заметка',6))]);
+      current=await db.getDay(quick.id);
+      check(deletedSeed.id===firstNote.id && !current.text.includes(firstNote.text) &&
+        current.moments.map(note=>note.id).join(',')==='note-b,note-f','Concurrent delete and append must preserve the other notes');
+      const retry=await db.appendDayMoment(blank,firstNote);
+      check(retry.moments.length===2,'A delayed add retry must respect a subsequent deletion');
+      current=await db.saveDay({...next,caption:'Первое автосохранение'});
+      const afterFreshSave=await db.saveDay({...next,revision:current.revision,caption:'Второе автосохранение'});
+      check(afterFreshSave.id===quick.id && afterFreshSave.moments.length===2 && !afterFreshSave.text.includes(firstNote.text),
+        'Successive saves from an open editor must not reintroduce a deleted note or its automatic draft text');
+      await Promise.all([db.restoreDayNote(quick.id,deletedSeed),
+        db.saveDay({...afterFreshSave,text:'Новый абзац автора'})]);
+      current=await db.getDay(quick.id);
+      check(current.text==='Новый абзац автора' && current.moments.map(note=>note.id).join(',')==='note-a,note-b,note-f',
+        'Undo and a concurrent story edit must both survive');
+      await db.removeDayNote(quick.id,firstNote);
+      check((await db.getDay(quick.id)).text==='Новый абзац автора','Removing the old seed must preserve authored text');
+      const authored=await db.saveDay({id:'authored-story',date:'2026-11-30',text:firstNote.text});
+      await db.appendDayMoment(authored,firstNote);
+      await db.removeDayNote(authored.id,firstNote);
+      check((await db.getDay(authored.id)).text===firstNote.text,'An authored draft can contain the same words as a note');
+      const oldQuickId='legacy-quick';
+      await db.importDays([{id:oldQuickId,date:'2026-12-02',status:'draft',text:oldNote.text,moments:[oldNote]}]);
+      const oldQuick=await db.getDay(oldQuickId);
+      await db.removeDayNote(oldQuickId,oldNote);
+      const oldAutosave=await db.saveDay({...oldQuick,musicMode:'file',caption:'Черновик'});
+      check(oldAutosave.text==='' && !oldAutosave.moments.length,'A legacy editor must not revive deleted automatic text');
+      const lone=await db.appendDayMoment({id:'lone-seed',date:'2026-12-01'},firstNote);
+      const loneNote=await db.removeDayNote(lone.id,firstNote);
+      check((await db.getDay(lone.id)).text==='' && await db.restoreDayNote(lone.id,loneNote) &&
+        (await db.getDay(lone.id)).text===firstNote.text,'Undo on an untouched draft restores its automatic seed');
+      await db.removeDay(quick.id);
+      check(await db.restoreDayNote(quick.id,deletedSeed)===false && await db.removeDayNote(quick.id,deletedSeed)===null &&
+        !await db.getDay(quick.id),'Undo must never recreate a deleted day');
+      return 'versions, photos, audio, pending edits, backups, corruption, drafts, note deletion and undo, stale editors, concurrent note and story changes';
     },origin.href);
     console.log(engine + ': ' + report + ' OK');
   } finally {

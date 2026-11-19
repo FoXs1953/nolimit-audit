@@ -1,5 +1,5 @@
 import {icon,esc,sheet,hidePanel,syncPanel,closeSheet,localDate,formatDate,toast,refreshNotice,forgetPanels} from './ui.js';
-import {appendDayMoment,getDay,listDays,makePrimary,removeDay,saveDay} from './store.js';
+import {appendDayMoment,getDay,listDays,makePrimary,removeDay,removeDayNote,restoreDayNote,saveDay} from './store.js';
 import {mountEditor} from './editor.js';
 import {mountPlayer} from './player.js';
 import {demos,refreshDemos} from './demos.js';
@@ -33,7 +33,7 @@ function setMotion(value){
 }
 applyMotion();
 systemMotion.addEventListener?.('change',applyMotion);
-const ctx = {icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,about,setMotion,get reducedMotion(){return reduced();}};
+const ctx = {icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
 function downloadError(error){toast(error?.message || t('actionError'));}
 function about(){
   sheet(t('about'),'<p><strong>NoLimit · '+t('journal')+'</strong></p><p>'+t('aboutIntro')+'</p><p>'+t('privacy')+'</p>'+
@@ -109,8 +109,41 @@ function dayActions(day) {
       body.querySelector('[data-act="delete"]').onclick=()=>confirmDelete(day);
     });
 }
-function confirmDelete(day){
-  sheet(t('deleteTitle'),'<p>'+esc(t('confirmDelete',{title:day.title||t('entry'),date:formatDate(day.date)}))+'</p>'+
+async function refreshAfterRemoval(dayId) {
+  drafts.delete(dayId);
+  if(route!=='today') {
+    if(route==='archive' || route==='day/'+encodeURIComponent(dayId)) {
+      const currentRoute=route,scrollY=window.scrollY;
+      await render(currentRoute,false,cleanup?.getViewState?.());
+      if(route===currentRoute)window.scrollTo({top:scrollY,behavior:'instant'});
+    }
+    return;
+  }
+  const before=document.querySelector('.home-personal');
+  const top=before?.getBoundingClientRect().top;
+  const expanded=new Set(Array.from(before?.querySelectorAll('details[open][data-notes-day]') || [],item=>item.dataset.notesDay));
+  await go('today',{refresh:true,focus:false});
+  const after=document.querySelector('.home-personal');
+  if(!after)return;
+  for(const group of after.querySelectorAll('details[data-notes-day]')) group.open=expanded.has(group.dataset.notesDay);
+  if(top!==undefined)window.scrollBy({top:after.getBoundingClientRect().top-top,behavior:'instant'});
+  after.querySelector('[data-action="moment"]')?.focus({preventScroll:true});
+}
+async function deleteNote(day,note) {
+  try {
+    const removed=await removeDayNote(day.id,note);
+    await refreshAfterRemoval(day.id);
+    if(!removed)return;
+    toast(()=>t('noteRemoved'),{label:()=>t('undo'),run:async()=>{
+      const restored=await restoreDayNote(day.id,removed);
+      await refreshAfterRemoval(day.id);
+      toast(()=>t(restored?'noteRestored':'noteDayMissing'));
+    }});
+  }catch(error){downloadError(error);}
+}
+function confirmDelete(day,returnTo='archive'){
+  const refresh=()=>returnTo==='today' ? refreshAfterRemoval(day.id) : go('archive',{refresh:true});
+  sheet(t('deleteTitle'),'<p>'+esc(t('confirmDelete',{title:day.title || day.titleOverride || day.text || t('entry'),date:formatDate(day.date,{day:'numeric',month:'long',year:'numeric'})}))+'</p>'+
     '<div class="sheet-actions"><button class="secondary" data-no>'+t('cancel')+'</button><button class="primary delete-action" data-yes>'+t('delete')+'</button></div>',body=>{
       body.querySelector('[data-no]').onclick=closeSheet;
       body.querySelector('[data-yes]').onclick=async event=>{
@@ -118,9 +151,9 @@ function confirmDelete(day){
         try {
           const removed=await removeDay(day.id);
           drafts.delete(day.id);
-          await go('archive',{refresh:true});
+          await refresh();
           toast(()=>t('removed'),removed?{label:()=>t('undo'),run:async()=>{
-            await saveDay(removed);await go('archive',{refresh:true});toast(t('restored'));
+            await saveDay(removed);await refresh();toast(t('restored'));
           }}:undefined);
         } catch(e){btn.disabled=false;downloadError(e);}
       };
@@ -158,7 +191,7 @@ async function go(target,options={}){
   }
   const method=history.state?.panel || key===route?'replaceState':'pushState';
   hidePanel(true);history[method]({},'','#'+key);
-  await render(key,true);
+  await render(key,options.focus!==false);
 }
 async function render(key,focus,viewState) {
   const ticket=++generation;

@@ -191,6 +191,99 @@ async function importOnCleanDevice(browser,zip,errors) {
     console.log(engine+' 820px: ZIP imported through UI, saved photos and sound available after reload');
   } finally { await ctx.close(); }
 }
+async function homeDeletion(browser,errors) {
+  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  try {
+    const page=await ctx.newPage();logErrors(page,errors);
+    await ready(page);
+    const home=main(page).locator('.home-personal');
+    const pastDate='2024-03-03';
+    const older='Ранним утром на реке стоял туман.';
+    const middle='В полдень мы встретили цаплю.';
+    const latest='Вечером туман вернулся.';
+    const noteRow=text=>home.locator('li').filter({has:page.getByText(text,{exact:true})});
+    const dayRow=date=>home.locator('.home-memory-row').filter({has:page.locator('time[datetime="'+date+'"]')});
+    const undo=by(page,'Вернуть');
+    async function addNote(text) {
+      await by(home,'Добавить заметку').tap();
+      const dialog=page.getByRole('dialog');
+      await dialog.getByRole('textbox',{name:'Что запомнилось?'}).fill(text);
+      await by(dialog,'Сохранить заметку').tap();
+      await noteRow(text).waitFor();
+    }
+    async function showNote(text) {
+      const row=noteRow(text);
+      await row.waitFor({state:'attached'});
+      if(!await row.isVisible()) {
+        await home.locator('details').filter({has:page.getByText(text,{exact:true})}).locator('summary').tap();
+      }
+      await row.waitFor();
+      return row;
+    }
+    const confirm=page.getByRole('dialog',{name:'Удалить день?'});
+    async function confirmDay(date) {
+      const displayedDate=await dayRow(date).locator('time').textContent();
+      const displayedTitle=await dayRow(date).locator('strong').textContent();
+      await by(dayRow(date),'Удалить день').tap();
+      const prompt=await confirm.innerText();
+      assert.ok(prompt.includes(displayedDate),'Confirmation identifies the selected date');
+      assert.ok(prompt.includes(displayedTitle),'Confirmation identifies the selected title');
+      await by(confirm,'Удалить день').tap();
+      await undo.waitFor();
+      assert.equal(new URL(page.url()).hash,'#today');
+      assert.equal(await dayRow(date).count(),0);
+    }
+
+    await addNote(note);
+    await by(main(page),'Продолжить запись').tap();
+    const dateField=main(page).getByLabel('Дата',{exact:true});
+    const today=await dateField.inputValue();
+    await dateField.fill(pastDate);
+    await main(page).getByRole('textbox',{name:'Текст дня'}).fill(firstDay+'.');
+    await chooseFile(page,'Добавить фото',path.join(media,'river.jpg'));
+    await chooseFile(page,'Выбрать аудиофайл',makeTone());
+    await saveCard(page);
+    await gotoPage(page,'today');
+    await dayRow(pastDate).getByText(firstDay,{exact:true}).waitFor();
+    for(const text of [older,middle,latest]) await addNote(text);
+    await dayRow(today).waitFor();await layout(page);
+
+    await by(await showNote(middle),'Удалить заметку').tap();
+    await undo.waitFor();
+    assert.equal(await noteRow(middle).count(),0);
+    await showNote(older);await showNote(latest);await showNote(note);
+    await undo.tap();
+    await showNote(middle);
+    await page.reload();
+    await by(await showNote(middle),'Удалить заметку').tap();
+    await undo.waitFor();await page.reload();
+    await showNote(older);await showNote(latest);await showNote(note);
+    assert.equal(await noteRow(middle).count(),0,'A deleted note stays deleted after reload');
+    await by(await showNote(note),'Удалить заметку').tap();
+    await undo.waitFor();
+    assert.equal(await noteRow(note).count(),0);
+    await dayRow(pastDate).getByText(firstDay,{exact:true}).waitFor();
+    await showNote(older);await showNote(latest);
+    await undo.tap();await showNote(note);
+
+    await by(dayRow(pastDate),'Удалить день').tap();
+    await by(confirm,'Отмена').tap();await confirm.waitFor({state:'hidden'});
+    await dayRow(pastDate).waitFor();await dayRow(today).waitFor();
+    await confirmDay(pastDate);
+    await dayRow(today).waitFor();await showNote(latest);
+    await undo.tap();
+    await dayRow(pastDate).waitFor();await page.reload();
+    await showNote(note);await dayRow(today).waitFor();
+    await confirmDay(today);
+    await dayRow(pastDate).waitFor();await page.reload();
+    await by(main(page),'Записать день').waitFor();await showNote(note);
+    assert.equal(await dayRow(today).count(),0);
+    await gotoPage(page,'archive');
+    await by(main(page),new RegExp(firstDay),false).waitFor();
+    assert.equal(await main(page).locator('.personal-card').count(),1);
+    console.log(engine+' 390px touch: deleted a middle note, handled both day targets, verified cancel, undo and persistence');
+  } finally {await ctx.close();}
+}
 async function dimensions(browser,width,errors) {
   const ctx=await browser.newContext({viewport:{width,height:900}});
   try {
@@ -214,6 +307,7 @@ async function dimensions(browser,width,errors) {
   try {
     const zip=await journey(browser,dir,errors);
     await importOnCleanDevice(browser,zip,errors);
+    await homeDeletion(browser,errors);
     for (const width of [320,1360]) await dimensions(browser,width,errors);
     assert.deepEqual(errors,[]);
   } finally {await browser.close();await fs.rm(dir,{recursive:true,force:true});}
