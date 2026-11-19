@@ -1,5 +1,5 @@
 import { saveDay } from './store.js';
-import { makeRecipe } from './art.js';
+import { makeRecipe, moodOptions, normalizeMood } from './art.js';
 import { musicLink } from './music-link.js';
 import { formatDate, getLanguage, getLocale, translator } from './i18n.js';
 import { messages } from './locales/editor.js';
@@ -146,12 +146,12 @@ async function musicFromFile(file) {
 export function mountEditor(root, record, ctx, viewState = {}) {
   const esc = ctx.esc;
   const energyNames = { calm: t('energyCalm'), steady: t('energySteady'), bright: t('energyBright') };
-  const moodNames = { quiet: t('moodQuiet'), bright: t('moodBright'), restless: t('moodRestless'), tender: t('moodTender') };
   const published = record.status === 'ready' ? cleanBase(record) : null;
   const draft = Object.assign({
     date:localDate(),text:'',title:'',caption:'',moments:[],photos:[],music:null,
   },cleanBase(record),record.pendingEdit || {});
   Object.assign(draft,{id:record.id || crypto.randomUUID(),revision:record.revision,primary:record.primary,status:'draft'});
+  draft.moodOverride = normalizeMood(draft.moodOverride);
   draft.photos = (draft.photos || []).map(p=>({...p}));
   draft.moments = [...(draft.moments || [])];
   draft.music = draft.music ? {...draft.music} : null;
@@ -262,7 +262,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     `<details class="ed-custom"><summary>${t('customize')}</summary><label class="ed-field">${t('folderName')}<input data-ed-title-input maxlength="95" placeholder="${t('autoWords')}"></label>`+
     `<label class="ed-field">${t('caption')}<textarea rows="2" data-ed-cap-input maxlength="220" placeholder="${t('captionPrompt')}"></textarea></label>`+
     `<button type="button" class="ed-text-button" data-ed-choose>${t('chooseText')}</button>`+
-    `<label class="ed-field">${t('mood')}<select data-ed-mood>`+options({'':t('fromText'),...moodNames},draft.moodOverride)+'</select></label>'+
+    `<label class="ed-field">${t('mood')}<select data-ed-mood>`+options({'':t('fromText'),...moodOptions()},draft.moodOverride)+'</select></label>'+
     `<label class="ed-field" data-ed-rhythm-field>${t('frameRhythm')}<select data-ed-rhythm>`+options({'':t('fromSong'),...energyNames},draft.rhythmOverride)+'</select></label></details>'+
     `<div class="ed-actions"><button type="button" class="primary" data-ed-save>${t('saveCard')}</button></div></section>`+
     `<p class="ed-error" data-ed-error role="alert"></p><button type="button" class="ed-text-button ed-discard" data-ed-discard hidden>${t('discard')}</button></div></div>`;

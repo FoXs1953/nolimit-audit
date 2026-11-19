@@ -63,25 +63,30 @@ async function saveAndReadCard(page) {
     const story = page.getByRole('textbox', {name:'Текст дня'});
     await story.fill('A quiet moon over the still lake.');
     const mood = page.locator('[data-ed-scene]');
-    assert.equal(await mood.innerText(), 'Тихое');
+    assert.equal(await mood.innerText(), 'Спокойное');
     const gradient = locator => locator.evaluate(el => getComputedStyle(el).backgroundImage);
     const preview = page.locator('[data-ed-mini]');
     const hero = page.locator('[data-card="hero"]');
     const custom = page.locator('.ed-custom > summary');
     const choice = page.locator('[data-ed-mood]');
-    const quiet = await gradient(preview);
+    const calm = await gradient(preview);
     const palette = new Map();
     await custom.click();
-    for (const name of ['quiet','bright','tender','restless']) {
+    const labels = {restless:'Напряжённое', bright:'Радостное', sad:'Грустное', angry:'Злое', calm:'Спокойное'};
+    const options = await choice.locator('option').evaluateAll(nodes => nodes.map(node => [node.value,node.textContent]).sort());
+    assert.deepEqual(options, Object.entries({'':'Из текста',...labels}).sort());
+    for (const [name,label] of Object.entries(labels)) {
       await choice.selectOption(name);
+      assert.equal(await mood.innerText(), label);
       const background = await gradient(preview);
       assert.match(background, /gradient\(/, name + ' renders a gradient');
       palette.set(name, background);
     }
-    assert.equal(new Set(palette.values()).size, 4, 'Each mood has a distinct card background');
-    assert.equal(palette.get('quiet'), quiet);
+    assert.equal(new Set(palette.values()).size, 5, 'Each mood has a distinct card background');
+    assert.equal(palette.get('calm'), calm);
+    await choice.selectOption('sad');
     await choice.selectOption('');
-    assert.equal(await gradient(preview), quiet, 'Automatic mode restores the colour inferred from the entry');
+    assert.equal(await gradient(preview), calm, 'Automatic mode restores the colour inferred from the entry');
 
     const colors = ['#c87a34', '#36739c'];
     const photos = await Promise.all(colors.map(color => solidPhoto(page, color)));
@@ -92,7 +97,7 @@ async function saveAndReadCard(page) {
     await uploadTempo(page, 75);
     const first = await saveAndReadCard(page);
     assert.equal(first.color, colors[0]);
-    assert.equal(await gradient(hero), quiet);
+    assert.equal(await gradient(hero), calm);
 
     await page.getByRole('button', {name:'Изменить день', exact:true}).click();
     await story.fill('We dance with joy and laugh together.');
@@ -111,10 +116,10 @@ async function saveAndReadCard(page) {
     assert.ok(first.duration > second.duration && second.duration > 0, 'The faster recording advances frames sooner');
     await page.getByRole('button', {name:'Изменить день', exact:true}).click();
     await custom.click();
-    await choice.selectOption('tender');
+    await choice.selectOption('angry');
     await saveAndReadCard(page);
     await page.reload();
-    assert.equal(await gradient(hero), palette.get('tender'), 'The chosen colour survives saving and reopening');
+    assert.equal(await gradient(hero), palette.get('angry'), 'The chosen colour survives saving and reopening');
     assert.deepEqual(errors, []);
     console.log(engine + ': text changed motion ' + first.motion + ' → ' + second.motion +
       ', cover changed colour ' + first.color + ' → ' + second.color +

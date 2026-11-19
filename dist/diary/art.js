@@ -2,17 +2,34 @@ import {getLanguage,getLocale} from './i18n.js';
 import {artText as t} from './locales/art.js';
 
 const moods = {
-  quiet:{tilt:-1.5,motion:'float',voiceRate:.88,voicePitch:.96},
-  tender:{tilt:3.5,motion:'lift',voiceRate:.94,voicePitch:1},
+  restless:{tilt:5,motion:'cut',voiceRate:1.04,voicePitch:.98},
   bright:{tilt:-3,motion:'pan',voiceRate:1.06,voicePitch:1.06},
-  restless:{tilt:5,motion:'cut',voiceRate:1.04,voicePitch:.98}
+  sad:{tilt:-2.5,motion:'lift',voiceRate:.83,voicePitch:.91},
+  angry:{tilt:-5,motion:'cut',voiceRate:1.1,voicePitch:.94},
+  calm:{tilt:-1.5,motion:'float',voiceRate:.88,voicePitch:.96}
 };
 
+export function moodOptions() {
+  return Object.fromEntries(Object.keys(moods).map(id => [id,t(id)]));
+}
+
+export function normalizeMood(value) {
+  if (value === 'quiet' || value === 'tender') return 'calm';
+  return typeof value === 'string' && Object.hasOwn(moods,value) ? value : '';
+}
+
 const cues = {
-  quiet:['тиш','тих','молч','медлен','лун','сумерк','замер','спокой','один','пауза','үнсіз','тыныш','тынық','баяу','ымырт','айлы','жым-жырт','үндем','quiet','still','moon','silent','silence','dusk','calm','peaceful'],
-  tender:['тёпл','тепл','обня','домой','домаш','ладон','нежн','мурлы','какао','кофе','кружк','жылы','құшақ','алақан','мейір','отбас','анама','пырыл','family','warm','home','embrac','hug','tender','coffee','purr','cudd'],
-  bright:['смех','смея','улыб','танц','радос','празд','прыга','побед','летим','ура','қуаны','қуанд','күлі','күлк','күлім','биле','тойла','мереке','жеңіс','danc','happy','happin','laugh','smil','celebrat','joy','cheer'],
-  restless:['старт','ракет','спеш','гонк','тороп','нерв','сует','опозд','грохот','зымыран','ұшыр','асығ','асық','асығыс','жарыс','мазасыз','алаңда','қарбалас','дүрсіл','үлгер','race','racing','rush','hurr','nerv','anxious','hustl','rocket','launch']
+  sad:['груст','печал','тоск','тоску','плак','плач','слёз','слез','уныл','одиноко','расстро','разочаров','сағын','мұң','қайғ','жабырқ','жыла','көңілсіз','қапал','ренжі','sadness','sadden','sadder','saddest','sadly','sorrow','griev','lonely','melanchol','heartbrok','unhappy','weep','cried','crying','tearful','deject'],
+  angry:['злой','злая','злое','злые','злым','злост','злю','злил','злит','зля','сердит','сержусь','рассер','ненави','разозл','злоб','гнев','ярост','бешен','беси','раздраж','возмущ','ашу','ыза','қаһар','angry','anger','furious','fury','enrag','irritat','outrag','resent'],
+  restless:['напряж','напряг','трево','старт','ракет','спеш','гонк','тороп','нерв','сует','опозд','грохот','зымыран','ұшыр','асығ','асық','жарыс','мазасыз','алаңда','қарбалас','дүрсіл','уайым','race','racing','rush','hurr','nerv','anxi','restless','tense','tension','stress','hustl','rocket','launch'],
+  bright:['смех','смея','смею','мурлы','улыб','танц','радос','радую','весел','весёл','счаст','празд','прыга','побед','летим','ура','қуаны','қуанд','көтеріңкі','күлі','күлк','күлім','пырыл','биле','тойла','мереке','жеңіс','purr','danc','happy','happin','laugh','smil','celebrat','joy','cheer'],
+  calm:['тиш','тих','молч','медлен','спокой','спокоен','умиротвор','безмятеж','үнсіз','тыныш','тынық','жайбарақат','сабыр','баяу','жым-жырт','үндем','quiet','still','silent','silence','calm','peaceful','seren','relax']
+};
+// Exact words avoid confusing “mad” with “made” or «зол» with «золото».
+const exactCues = {
+  angry:['mad','зол','зла','злы'],
+  sad:['sad','cry'],
+  bright:['рад','рада','рады','радуюсь']
 };
 const energyTempo = {calm:66, steady:91, bright:128};
 const beatsPerFrame = {calm:8, steady:7, bright:6};
@@ -39,23 +56,26 @@ export function storyLanguage(day) {
 }
 
 function readMood(text) {
-  const normalized=text.toLowerCase().replace(/не\s+успе\p{L}*/gu,'спешка').replace(/(?:не\s+(?:груст|тих|спокой|радост|нерв)|not\s+(?:quiet|calm|happy|nervous))\p{L}*/gu,'');
+  const normalized=text.toLowerCase()
+    .replace(/(?<!\p{L})не\s+успе\p{L}*/gu,'спешка')
+    .replace(/(?<!\p{L})(?:не|not)\s+\p{L}+/gu,'')
+    .replace(/\p{L}+\s+емес(?!\p{L})/gu,'');
   const words=countWords(normalized);
-  let best='quiet',score=0;
+  let best='calm',score=0;
   for (const [id,stems] of Object.entries(cues)) {
-    const matches=words.filter(word=>stems.some(stem=>word.startsWith(stem))).length;
+    const matches=words.filter(word=>exactCues[id]?.includes(word) || stems.some(stem=>word.startsWith(stem))).length;
     if(matches>score) {best=id;score=matches;}
   }
   return best;
 }
 
 function entryMood(day) {
-  return Object.hasOwn(moods,day.moodOverride) ? day.moodOverride : readMood(clean(day.text));
+  return normalizeMood(day.moodOverride) || readMood(clean(day.text));
 }
 
 export function postcardMood(day) {
   const saved = day.status === 'ready' && day.recipe?.version === 1 ? day.recipe.mood : undefined;
-  return Object.hasOwn(moods,saved) ? saved : entryMood(day);
+  return normalizeMood(saved) || entryMood(day);
 }
 
 const fallbackTitles = {
@@ -79,7 +99,7 @@ function excerpt(value, max) {
 
 function describe(day,recipe) {
   const moodLabel=t(recipe.mood);
-  const treatment=t(moods[recipe.mood].motion);
+  const treatment=t(recipe.motion);
   const music=day.music || {};
   const measured=Number(music.bpm);
   const tempoSource=Object.hasOwn(energyTempo,day.rhythmOverride) ? 'manualTempo' :
@@ -87,7 +107,7 @@ function describe(day,recipe) {
   const fmt=new Intl.NumberFormat(getLocale(),{maximumFractionDigits:1});
   const lower=value=>value.toLocaleLowerCase(getLocale());
   return {...recipe,moodLabel,treatment,reasons:{
-    text:t(Object.hasOwn(moods,day.moodOverride)?'chosen':'inferred',{mood:lower(moodLabel)})+' '+t('technique',{technique:lower(treatment)}),
+    text:t(normalizeMood(day.moodOverride)?'chosen':'inferred',{mood:lower(moodLabel)})+' '+t('technique',{technique:lower(treatment)}),
     photo:day.photos?.length ? t('color',{color:recipe.color.toUpperCase()}) : t('missingColor'),
     music:music.kind==='link' ? t('linkTempo') : t(tempoSource,{bpm:fmt.format(recipe.bpm)})+'. '+t('time',{seconds:fmt.format(recipe.interval/1000)})
   }};
@@ -127,8 +147,8 @@ export function presentRecipe(day) {
     voiceRate:numeric(saved.voiceRate,moods[mood].voiceRate,.75,1.25),
     voicePitch:numeric(saved.voicePitch,moods[mood].voicePitch,.8,1.2),
     color:/^#[\da-f]{6}$/i.test(saved.color) ? saved.color : derived.color,
-    motion:['float','lift','pan','cut'].includes(saved.motion) ? saved.motion : derived.motion,
-    tilt:numeric(saved.tilt,derived.tilt,-8,8),
+    motion:['float','lift','pan','cut'].includes(saved.motion) ? saved.motion : moods[mood].motion,
+    tilt:numeric(saved.tilt,moods[mood].tilt,-8,8),
     interval:numeric(saved.interval,derived.interval,1800,12000),
     bpm:numeric(saved.bpm,derived.bpm,35,245),
     energy:Object.hasOwn(energyTempo,saved.energy)?saved.energy:derived.energy

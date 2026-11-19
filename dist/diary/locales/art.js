@@ -1,10 +1,11 @@
 import {translator} from '../i18n.js';
 
 export const artText = translator({
-  quiet:['Тихое','Тынық','Quiet'],
-  tender:['Тёплое','Жылы','Tender'],
   bright:['Радостное','Көтеріңкі','Joyful'],
   restless:['Напряжённое','Мазасыз','Restless'],
+  sad:['Грустное','Мұңды','Sad'],
+  angry:['Злое','Ашулы','Angry'],
+  calm:['Спокойное','Сабырлы','Calm'],
   float:['Длинная экспозиция','Ұзақ экспозиция','Long exposure'],
   lift:['Плёночный отпечаток','Фотопленкадан басылған сурет','Film print'],
   pan:['Контактный лист','Контакт парағы','Contact sheet'],

@@ -146,6 +146,15 @@ const cases=[
       }
       return {
         base:r,described,
+        sadness:['Сегодня мне грустно.','Мұңды күн.','I felt sad.'].map(text=>makeRecipe({text}).mood),
+        anger:['Я разозлился.','Мен ашуландым.','I felt angry.'].map(text=>makeRecipe({text}).mood),
+        legacy:['quiet','tender'].map(oldMood=>{
+          const happy={text:'Happy friends laughed together.'};
+          const saved=presentRecipe({...happy,status:'ready',recipe:{
+            version:1,mood:oldMood,title:'Personal title',motion:'lift',color:'#123456'
+          }});
+          return [makeRecipe({...happy,moodOverride:oldMood}).mood,saved.mood,saved.title,saved.motion,saved.color];
+        }),
         bright:makeRecipe({...base,text:'Happy friends danced and laughed.'}),
         kazakh:makeRecipe({...base,text:'Достармен билеп, күліп, қуанып жүрдік.'}),
         russian:makeRecipe({...base,text:'Смеялись, улыбались и танцевали вместе.'}),
@@ -156,7 +165,12 @@ const cases=[
       };
     });
     const {base,bright,kazakh,russian,photo,track,external,described,short}=comparisons;
-    assert.equal(base.mood,'quiet');
+    assert.equal(base.mood,'calm');
+    assert.deepEqual(comparisons.sadness,['sad','sad','sad']);
+    assert.deepEqual(comparisons.anger,['angry','angry','angry']);
+    for(const legacy of comparisons.legacy) {
+      assert.deepEqual(legacy,['calm','calm','Personal title','lift','#123456']);
+    }
     for(const r of [bright,kazakh,russian]) assert.equal(r.mood,'bright');
     assert.notEqual(base.voiceRate,bright.voiceRate);assert.notEqual(base.voicePitch,bright.voicePitch);
     assert.notEqual(base.motion,bright.motion);assert.equal(base.color,bright.color);assert.equal(base.interval,bright.interval);
