@@ -3,6 +3,7 @@ import {getLocale} from './i18n.js';
 export {formatDate} from './i18n.js';
 
 const symbols = {
+    people:'<circle cx="9" cy="8" r="3"/><path d="M2.5 20v-2a6.5 6.5 0 0 1 13 0v2M16 5.4a3 3 0 0 1 0 5.2M18 14a5 5 0 0 1 3.5 4.8V20"/>',
     pen:'<path d="m4 16 11-11 4 4L8 20l-5 1 1-5Zm9-9 4 4"/><path d="M13 21h8"/>',
     camera:'<path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3"/>',
     music:'<path d="M9 18V6l11-2v12M9 9l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',
@@ -125,7 +126,7 @@ export function sheet(title, html, onMount) {
   if (history.state?.panel && dialog.open) panels.delete(history.state.panel);
   panels.set(key, {title, html, onMount});
   if (panels.size > 16) panels.delete(panels.keys().next().value);
-  const state = {panel:key};
+  const state = {...history.state,panel:key};
   if (dialog.open) history.replaceState(state, '', location.href);
   else history.pushState(state, '', location.href);
   showPanel(key);

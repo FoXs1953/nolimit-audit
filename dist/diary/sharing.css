@@ -1,0 +1,32 @@
+@media(max-width:760px){.workspace~.dock,#dock.dock{grid-template-columns:repeat(5,minmax(0,1fr));width:min(420px,calc(100% - 16px))}#dock.dock button{padding-inline:1px}}
+.day-visibility{display:block;font-size:.76rem;color:#52617b;margin-top:4px}
+.social-settings{color:#1d293d}
+.social-settings [hidden]{display:none!important}
+.social-settings form{display:grid;gap:14px}
+.social-settings .social-as,.social-settings [data-mode-hint],.social-settings [data-count],.social-settings .share-song p{margin:0;font-size:.9rem;color:#515f77}
+.social-settings fieldset{margin:0;padding:0;border:0}
+.social-settings legend,.social-settings [data-recipient-area]>label{display:block;font-size:.93rem;font-weight:650;margin-bottom:7px}
+.social-settings button,.social-settings a.social-link,.social-settings summary,.social-settings select{min-height:44px}
+.social-settings button,.social-settings a.social-link,.social-settings summary,.social-settings input,.social-settings select,#dock [data-route=friends],#nav [data-route=friends],[data-card=share]{outline-offset:3px}
+.social-settings :is(button,a,summary,input,select):focus-visible,#dock [data-route=friends]:focus-visible,#nav [data-route=friends]:focus-visible,[data-card=share]:focus-visible{outline:3px solid #1748c4}
+.social-settings .social-mode,.social-settings .social-friend-check{min-height:44px;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #aebace;border-radius:10px;background:#fff;color:#253249;cursor:pointer}
+.social-settings .social-mode+.social-mode,.social-settings .social-friend-check+.social-friend-check{margin-top:5px}
+.social-settings .social-mode:has(input:checked),.social-settings .social-friend-check:has(input:checked){border-color:#295bd8;background:#edf3ff;color:#153780;box-shadow:inset 0 0 0 1px #295bd8}
+.social-settings label:has(input:focus-visible){outline:3px solid #1748c4;outline-offset:2px}
+.social-settings input:is([type=radio],[type=checkbox]){accent-color:#245bd8;width:18px;height:18px;margin:0;flex:none}
+.social-settings .social-friend-check small{color:#596981}
+.share-preview{border:1px solid #c7d2e1;border-radius:12px;background:#f6f8fc}
+.share-preview summary{cursor:pointer;padding:12px;font-weight:650}
+.share-preview-inner{padding:0 12px 12px;display:grid;gap:8px}.share-preview-inner p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font-size:.93rem}
+.share-preview-inner span{display:flex;align-items:center;gap:6px}
+.share-images{display:flex;gap:6px;flex-wrap:wrap}.share-images img{width:68px;height:52px;object-fit:cover;border-radius:5px}
+.social-settings .social-actions,.social-discussion .social-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.social-settings .share-song{display:grid;gap:8px}.share-song select{width:100%;border:1px solid #aebace;border-radius:9px;background:white;padding-inline:10px;font:inherit}
+.social-settings button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+.social-settings .secondary,.social-settings .social-danger{border:1px solid #9aa9c0;border-radius:10px;background:#fff;padding:9px 14px}
+.social-settings .social-danger{color:#993232;border-color:#cd9999}
+.social-settings :is(button,a,summary):not(:disabled):hover{filter:brightness(.95)}
+.social-settings button:not(:disabled):active{transform:translateY(1px)}
+.social-settings .social-link{display:inline-flex;align-items:center;text-decoration:none;padding:10px 16px}
+.share-remove{border-top:1px solid #d7dfe9;padding-top:12px}
+.social-settings [data-message]:empty{display:none}

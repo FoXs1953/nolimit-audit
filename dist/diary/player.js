@@ -1,3 +1,4 @@
+import {shareText} from './locales/sharing.js';
 import {presentRecipe,storyLanguage} from './art.js';
 import {formatDate} from './i18n.js';
 import {musicLink} from './music-link.js';
@@ -7,6 +8,7 @@ import {mountProvider} from './provider-player.js';
 import {playerText as t} from './locales/player.js';
 
 const env=window;
+const networkMedia=/^\/api\/social\/media\/[a-f\d-]+\/[a-f\d-]+$/i;
 const localMedia=/^(?:\.\/)?diary\/media\/[\w.-]+$/;
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
 function webAddress(value) {
@@ -19,6 +21,7 @@ function webAddress(value) {
 export function mountPlayer(root,day,ctx,viewState={}) {
   const {esc,icon}=ctx, recipe=presentRecipe(day), photos=day.photos || [], music=day.music || {};
   const lang=storyLanguage(day), date=formatDate(day.date), demo=day.id?.startsWith('demo-');
+  const readOnly=ctx.readOnly===true;
   const own=new AbortController(), opts={signal:own.signal}, urls=new Map();
   const audioLink=music.kind==='link' ? musicLink(music.url) : null;
   const song=audioLink?.url || (music.kind==='link' ? webAddress(music.url) : '');
@@ -31,7 +34,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       if (!urls.has(media.blob)) urls.set(media.blob,URL.createObjectURL(media.blob));
       return urls.get(media.blob);
     }
-    return localMedia.test(media.src || '') ? media.src : '';
+    return (localMedia.test(media.src || '') || (readOnly && networkMedia.test(media.src || ''))) ? media.src : '';
   }
   const audioSrc=music.kind==='file' ? urlFor(music) : '';
   const audio=audioSrc ? new Audio() : null;
@@ -48,7 +51,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   speech?.getVoices();
   const dayNotes=visibleDayNotes(day);
   const notesSection=noteList(dayNotes);
-  const editableNotes=demo ? notesSection : noteList(dayNotes,{dayId:day.id});
+  const editableNotes=demo || readOnly ? notesSection : noteList(dayNotes,{dayId:day.id});
   const sourceName=music.name || t('dayMusic');
   const story=String(day.text || recipe.caption || '').trim();
   // The first sentence often supplied the title. Offer the next detail on the page;
@@ -71,7 +74,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
     (film?'<header class="film-heading"><h2 id="card-film-title">'+html('dayVideo')+'</h2></header>':'')+
     '<header class="viewer-header"><div><small>'+esc(date)+'</small><h2 id="card-viewer-title" lang="'+lang+'">'+esc(recipe.title)+'</h2></div>'+
-    (demo?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
+    (demo || readOnly?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
     '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt=""></div></div>'+
     '<div class="viewer-details">'+
@@ -85,9 +88,9 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
     '<p class="viewer-caption" lang="'+lang+'">'+esc(recipe.caption)+'</p>'+
     '</div>'+notesSection+'</div></dialog>'+
-    '<section class="ab-evidence"><h2>'+html('folder')+'</h2>'+
+    '<section class="ab-evidence"'+(readOnly && !film?' hidden':'')+'><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
-    (demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('options','more',t('options')))+
+    (readOnly?'':demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('share','people',shareText('access'))+action('options','more',t('options')))+
     (demo ? action('credits','info',t('credits')) : '')+'</section>'+editableNotes+'</div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
   for(const button of frame.querySelectorAll('[data-delete-note]')){
@@ -224,7 +227,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     viewer.showModal();document.body.style.overflow='hidden';
     el('close').focus({preventScroll:true});
     if(!fromHistory) {
-      if(history.state?.cardViewer!==day.id)history.pushState({cardViewer:day.id},'',location.href);
+      if(history.state?.cardViewer!==day.id)history.pushState({...history.state,cardViewer:day.id},'',location.href);
       play();
     }
   }
@@ -315,7 +318,8 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       '<section><h3>'+html('music')+'</h3><p>'+esc(music.name)+' · '+esc(music.credit)+'</p></section>'+
       photos.map(p=>'<section><h3>'+esc(p.name)+'</h3><p>'+esc(p.credit || '')+'</p>'+
         (webAddress(p.source)?'<a href="'+esc(webAddress(p.source))+'" target="_blank" rel="noopener noreferrer">'+html('photoSource')+'</a>':'')+'</section>').join('')+'</div>'));
-  } else {
+  } else if (!readOnly) {
+    el('share').onclick=()=>{pause();ctx.shareDay(day);};
     const editDay=()=>{pause();ctx.edit(day);};
     el('edit').addEventListener('click',editDay);
     el('viewer-edit').addEventListener('click',editDay);

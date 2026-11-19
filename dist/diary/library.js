@@ -14,6 +14,9 @@ function label(day) {
   return day.title || day.titleOverride || day.text?.trim().split(/\s+/).slice(0,7).join(' ') ||
     day.moments?.[0]?.text || t('dayEntry');
 }
+import {publicationLink} from './social-api.js';
+import {shareText} from './locales/sharing.js';
+
 export function mountLibrary(root, records, examples, ctx) {
   const language = getLanguage();
   const days = (examples ? [...demos] : [...records]).sort((a,b) => examples ? 0 : b.date.localeCompare(a.date));
@@ -110,7 +113,15 @@ export function mountLibrary(root, records, examples, ctx) {
       grid.querySelector('[data-empty]').onclick = () => { if(empty) ctx.edit(); else {search.value='';month.value='';paint();search.focus();} };
       return;
     }
-    if(!examples) { grid.innerHTML=personalMonths(filtered);return; }
+    if(!examples) {
+      grid.innerHTML=personalMonths(filtered);
+      for(const button of grid.querySelectorAll('.personal-open[data-id]')) {
+        const badge=document.createElement('span');badge.className='day-visibility';badge.textContent=shareText('private');
+        button.querySelector('.day-card-copy')?.append(badge);
+        publicationLink(button.dataset.id).then(link=>{if(badge.isConnected && link?.confirmed)badge.textContent=shareText(link.mode);}).catch(()=>{});
+      }
+      return;
+    }
     grid.innerHTML = filtered.map(day => {
       const image = photo(day);
       return '<article class="library-item panel" data-mood="' + postcardMood(day) + '"><button class="library-open" data-id="' + esc(day.id) + '">' +

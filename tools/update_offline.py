@@ -4,7 +4,7 @@ import hashlib
 import json
 
 dist = Path(__file__).resolve().parents[1] / "dist"
-paths = [p for p in sorted(dist.rglob("*")) if p.is_file() and p.name not in {".DS_Store","diary-sw.js","offline-list.js"} and not any(part.startswith(".") for part in p.relative_to(dist).parts)]
+paths = [p for p in sorted(dist.rglob("*")) if p.is_file() and p.name not in {".DS_Store","diary-sw.js","offline-list.js"} and p.relative_to(dist).parts[0] not in {"server","client"} and not any(part.startswith(".") for part in p.relative_to(dist).parts)]
 digest = hashlib.sha256()
 for path in paths + [dist / "diary-sw.js"]:
     digest.update(str(path.relative_to(dist)).encode())

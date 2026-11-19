@@ -5,7 +5,14 @@
   "description": "NoLimit ArtTech journal, mobile browser UI and offline verification",
   "scripts": {
     "test:ui": "node tools/check_diary.cjs",
-    "test:storage": "node tools/check_diary_storage.cjs"
+    "test:storage": "node tools/check_diary_storage.cjs",
+    "build": "node tools/build_friends.mjs",
+    "test:friends": "node tools/check_friends.cjs",
+    "test:publications": "node tests/check_publications.mjs"
   },
-  "devDependencies": {"playwright": "1.62.1"}
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "miniflare": "4.20260730.0",
+    "playwright": "1.62.1"
+  }
 }
