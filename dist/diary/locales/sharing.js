@@ -33,8 +33,8 @@ export const shareText=translator({
   copyDraft:['Скопировать мой текст','Өз мәтінімді көшіру','Copy my text'],copied:['Скопировано','Көшірілді','Copied'],reactions:['Реакции','Реакциялар','Reactions'],
   waiting:['Соединение прервано. Проверь доступ перед отправкой.','Қосылым үзілді. Жіберу алдында рұқсатты тексер.','Connection lost. Recheck access before sending.'],
   largeMedia:['Файл слишком большой для публикации. Выбери файл меньшего размера.','Файл жариялауға тым үлкен. Кішірек файл таңда.','This file is too large to publish. Choose a smaller file.'],
-  mediaType:['Этот формат файла не поддерживается. Выбери другое фото или аудио.','Бұл файл пішіміне қолдау жоқ. Басқа фото немесе аудио таңда.','This file format is unsupported. Choose another photo or audio file.'],
-  notReady:['Сначала сохрани готовый день с текстом, фото и музыкой.','Алдымен мәтін, фото және музыкасы бар күнді сақта.','Save a finished day with text, a photo and music first.'],
+  mediaType:['Этот формат файла не поддерживается. Выбери другое фото, видео или аудио.','Бұл файл пішіміне қолдау жоқ. Басқа фото, видео немесе аудио таңда.','This file format is unsupported. Choose another photo, video or audio file.'],
+  notReady:['Сначала сохрани готовый день с текстом, музыкой и хотя бы одним фото или видео.','Алдымен мәтіні, әуені және кемінде бір фотосы немесе видеосы бар күнді сақта.','Save a finished day with text, music and at least one photo or video first.'],
   hiddenPhotos:['Исходные заметки видны только тебе.','Бастапқы жазбаларды тек өзің көресің.','Unpublished notes stay private.'],
   audience:['Аудитория','Көрермендер','Audience'],count:['Выбрано: {count}','Таңдалғаны: {count}','Selected: {count}']
 });

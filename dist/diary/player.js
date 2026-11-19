@@ -2,7 +2,7 @@ import {shareText} from './locales/sharing.js';
 import {presentRecipe,storyLanguage} from './art.js';
 import {formatDate} from './i18n.js';
 import {musicLink} from './music-link.js';
-import {visibleDayNotes} from './store.js';
+import {isGalleryVideo,visibleDayNotes} from './store.js';
 import {noteList} from './ui.js';
 import {mountProvider} from './provider-player.js';
 import {playerText as t} from './locales/player.js';
@@ -21,6 +21,7 @@ function webAddress(value) {
 export function mountPlayer(root,day,ctx,viewState={}) {
   const {esc,icon}=ctx, recipe=presentRecipe(day), photos=day.photos || [], music=day.music || {};
   const lang=storyLanguage(day), date=formatDate(day.date), demo=day.id?.startsWith('demo-');
+  const hasVideos=photos.some(isGalleryVideo);
   const readOnly=ctx.readOnly===true;
   const own=new AbortController(), opts={signal:own.signal}, urls=new Map();
   const audioLink=music.kind==='link' ? musicLink(music.url) : null;
@@ -68,7 +69,8 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<button class="ab-action" type="button" data-card="hero-play" aria-haspopup="dialog">'+icon('play',17)+html('animate')+'</button></div>'+
     '<div class="ab-art card-art"><button class="card-print" type="button" data-card="zoom" aria-label="'+html('zoom')+'" aria-haspopup="dialog">'+
     '<i class="card-back" aria-hidden="true"></i><i class="card-middle" aria-hidden="true"></i><span class="card-print-paper">'+
-    '<span class="card-print-clip"><img data-card="photo" alt=""></span><span class="card-paper-foot"><span>'+esc(date)+'</span><span data-card="paper-count"></span></span></span></button></div></section>'+
+    '<span class="card-print-clip"><img data-card="photo" alt="">'+
+    (hasVideos?'<video data-card="video-cover" muted playsinline preload="metadata" hidden aria-hidden="true"></video><span class="clip-mark" data-card="clip-mark" hidden>'+icon('play',16)+'</span>':'')+'</span><span class="card-paper-foot"><span>'+esc(date)+'</span><span data-card="paper-count"></span></span></span></button></div></section>'+
     (film?'':'<section class="card-story" data-card="story"><h2>'+html('story')+'</h2><p lang="'+lang+'">'+esc(summary.slice(0,380))+(summary.length>380?'…':'')+'</p>'+
     '<button type="button" data-card="read">'+html('read')+icon('chevron',15)+'</button></section>')+
     '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
@@ -76,14 +78,15 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<header class="viewer-header"><div><small>'+esc(date)+'</small><h2 id="card-viewer-title" lang="'+lang+'">'+esc(recipe.title)+'</h2></div>'+
     (demo || readOnly?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
-    '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt=""></div></div>'+
+    '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt="">'+
+    (hasVideos?'<video data-card="viewer-video" controls playsinline preload="metadata" hidden></video>':'')+'</div></div>'+
     '<div class="viewer-details">'+
     (film?'<div class="viewer-provider" data-card="provider"></div>':'')+
     '<div class="viewer-music"><span class="viewer-music-glyph">'+icon(film?'play':'music',20)+'</span><div>'+ (film?'':'<small>'+html('dayMusic')+'</small>')+'<strong>'+esc(sourceName)+'</strong></div></div>'+
     (film?'':'<div class="viewer-provider" data-card="provider"'+(embedded?'':' hidden')+'></div>')+
     '<p class="viewer-status" role="status" data-card="status"></p>'+
     (song?'<a class="viewer-source" data-card="source" href="'+esc(song)+'" target="_blank" rel="noopener noreferrer">'+html(film?'openVideo':'openSong')+' ↗</a>':'')+
-    '</div><div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev','previous')+control('play','play','play','viewer-play')+control('next','next','next')+'</div>'+
+    '</div><div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev',hasVideos?'previousFrame':'previous')+control('play','play','play','viewer-play')+control('next','next',hasVideos?'nextFrame':'next')+'</div>'+
     '<span class="viewer-count" data-card="counter"></span><button type="button" class="viewer-control viewer-mute" data-card="mute"></button></div>'+
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
     '<p class="viewer-caption" lang="'+lang+'">'+esc(recipe.caption)+'</p>'+
@@ -93,6 +96,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     (readOnly?'':demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('share','people',shareText('access'))+action('options','more',t('options')))+
     (demo ? action('credits','info',t('credits')) : '')+'</section>'+editableNotes+'</div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
+  const clip=el('viewer-video');
   for(const button of frame.querySelectorAll('[data-delete-note]')){
     button.onclick=async()=>{
       if(button.disabled)return;
@@ -125,11 +129,27 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     frame.classList.toggle('is-playing',playing);
   }
   function paint() {
-    const p=photos[position], src=urlFor(p);
+    const p=photos[position], src=urlFor(p), video=isGalleryVideo(p);
+    if (clip) {
+      const cover=el('video-cover');
+      el('clip-mark').hidden=cover.hidden=clip.hidden=!video || !src;
+      if (video && src) {
+        if (clip.getAttribute('src')!==src) {
+          clip.pause();
+          clip.src=src;
+          cover.src=src+'#t=0.001';
+        }
+        clip.setAttribute('aria-label',p.name || t('dayVideo'));
+      } else if (clip.hasAttribute('src')) {
+        clip.pause();
+        clip.removeAttribute('src');clip.load();
+        cover.removeAttribute('src');cover.load();
+      }
+    }
     for (const id of ['photo','viewer-photo']) {
       const img=el(id);
-      if(src && img.getAttribute('src')!==src) img.src=src;
-      img.alt=p?.name || t('numberedPhoto',{index:position+1});img.hidden=!src;
+      if(!video && src && img.getAttribute('src')!==src) img.src=src;
+      img.alt=p?.name || t('numberedPhoto',{index:position+1});img.hidden=!src || video;
       img.style.objectPosition=clamp(p?.x ?? 50,0,100)+'% '+clamp(p?.y ?? 50,0,100)+'%';
     }
     el('counter').textContent=photos.length?t('count',{index:position+1,count:photos.length}):t('noPhoto');
@@ -192,9 +212,23 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     if(!audio && !provider){fallbackOffset=target;fallbackClock=performance.now();}
     finished=false;paint();
   }
-  function pause() {
+  function pauseSoundtrack() {
     wanted=false;providerPlaying=false;playRequest++;stopClock();
     audio?.pause();provider?.pause({keepAvailable:film && !destroyed});buttons();
+  }
+  function pause() {
+    clip?.pause();
+    pauseSoundtrack();
+  }
+  if(clip) {
+    clip.addEventListener('play',()=>{
+      if(!expanded || document.hidden){clip.pause();return;}
+      pauseSoundtrack();stopSpeech();notice();
+    },opts);
+    clip.addEventListener('loadedmetadata',()=>{
+      if(!clip.hidden && clip.videoHeight) photoWell.style.setProperty('--photo-ratio',String(clip.videoWidth/clip.videoHeight));
+    },opts);
+    clip.addEventListener('error',()=>{if(!clip.hidden)notice(t('videoUnavailable'));},opts);
   }
   function playAudio() {
     const id=++playRequest;
@@ -206,6 +240,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   }
   function play() {
     if(!expanded)return;
+    clip?.pause();
     if(finished){position=0;fallbackOffset=0;pendingSeek=audio?0:null;resumeTime=startAt;paint();applySeek();provider?.seek(startAt);}
     finished=false;wanted=true;stopSpeech();notice();
     if(audio) {if(audio.readyState<2)notice(t('loadingMusic'));playAudio();}
@@ -228,7 +263,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     el('close').focus({preventScroll:true});
     if(!fromHistory) {
       if(history.state?.cardViewer!==day.id)history.pushState({...history.state,cardViewer:day.id},'',location.href);
-      play();
+      if(!isGalleryVideo(photos[position]))play();
     }
   }
   function closeViewer(useHistory=true) {
@@ -256,7 +291,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   viewer.addEventListener('cancel',event=>{event.preventDefault();closeViewer();},opts);
   viewer.addEventListener('click',event=>{if(event.target===viewer)closeViewer();},opts);
   viewer.addEventListener('keydown',event=>{
-    if(!expanded || event.target.matches('input,iframe') || event.altKey || event.ctrlKey || event.metaKey)return;
+    if(!expanded || event.target.matches('input,iframe,video') || event.altKey || event.ctrlKey || event.metaKey)return;
     if(event.key==='ArrowLeft' || event.key==='ArrowRight'){
       event.preventDefault();locate(position+(event.key==='ArrowLeft'?-1:1));
     }
@@ -268,7 +303,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   },opts);
   let touch;
   const photoWell=viewer.querySelector('.viewer-photo-well');
-  photoWell.addEventListener('touchstart',e=>{const p=e.changedTouches[0];touch=[p.clientX,p.clientY];},{passive:true});
+  photoWell.addEventListener('touchstart',e=>{if(e.target.closest('video'))return;const p=e.changedTouches[0];touch=[p.clientX,p.clientY];},{passive:true});
   photoWell.addEventListener('touchend',e=>{
     if(!touch)return;
     const p=e.changedTouches[0],dx=p.clientX-touch[0],dy=p.clientY-touch[1];touch=null;
@@ -276,7 +311,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   },{passive:true});
   el('viewer-photo').onload=event=>{
     const image=event.currentTarget;
-    if(image.naturalHeight)photoWell.style.setProperty('--photo-ratio',String(image.naturalWidth/image.naturalHeight));
+    if(!image.hidden && image.naturalHeight)photoWell.style.setProperty('--photo-ratio',String(image.naturalWidth/image.naturalHeight));
   };
   el('viewer-photo').onerror=()=>notice(t('imageUnavailable'));
   function show(title,markup,bind){pause();ctx.sheet(title,markup,bind);}
@@ -333,6 +368,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     providerPlaying=state==='playing';
     if(state==='playing') {
       if((!expanded && !film) || document.hidden){provider?.pause();return;}
+      clip?.pause();
       if(expanded)begin();
       notice();
     }else if(state==='buffering'){

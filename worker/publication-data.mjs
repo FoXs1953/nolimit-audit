@@ -40,7 +40,8 @@ export function cleanDay(input) {
     return item.assetId;
   }
   const photos=input.photos.map(photo=>({
-    assetId:assetId(photo,'photo'),x:numeric(photo.x,0,100,50),y:numeric(photo.y,0,100,50),color:color(photo.color)
+    ...(photo?.kind==='video'?{kind:'video'}:{}),
+    assetId:assetId(photo,photo?.kind==='video'?'video':'photo'),x:numeric(photo.x,0,100,50),y:numeric(photo.y,0,100,50),color:color(photo.color)
   }));
   const track=input.music;
   let music;

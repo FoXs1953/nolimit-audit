@@ -21,7 +21,7 @@ async function language(page, code) {
 
 async function verifyPhoneHeader(page) {
   const fits = await page.evaluate(() => {
-    const boxes = [...document.querySelectorAll('.phone-brand,#language-switch button,#about')]
+    const boxes = [...document.querySelectorAll('.phone-brand,#language-switch button,#theme-toggle,#about')]
       .map(el => el.getBoundingClientRect()).filter(rect => rect.width !== 0);
     return boxes.every((box,i) => box.left >= 0 && box.right <= innerWidth &&
       (!i || box.left >= boxes[i-1].right - 1)) && document.documentElement.scrollWidth <= innerWidth;
@@ -88,7 +88,7 @@ async function createLinkedDay(page) {
   assert.equal(await dayText.evaluate(el=>document.activeElement===el),true);
   await dayText.fill(story);
   await save.click();
-  await page.getByText('Add at least one photo.',{exact:true}).waitFor();
+  await page.getByText('Add at least one photo or video.',{exact:true}).waitFor();
   await page.locator('[data-ed-photos]').setInputFiles(path.join(__dirname,'../dist/diary/media/river.jpg'));
   await page.locator('[data-ed-select]').waitFor();
   await page.getByRole('button',{name:'Link',exact:true}).click();
@@ -138,6 +138,26 @@ async function createLinkedDay(page) {
   assert.equal(await page.locator('html').getAttribute('lang'),'en');
 }
 
+async function verifyTheme(page) {
+  const toggle = page.getByRole('button',{name:'Black theme',exact:true});
+  const setting = page.locator('[data-theme-preference]');
+  const applied = value => page.waitForFunction(theme => document.documentElement.dataset.theme===theme,value);
+  await page.emulateMedia({colorScheme:'dark'});
+  await applied('dark');
+  assert.equal(await toggle.getAttribute('aria-pressed'),'true');
+  assert.equal(await setting.inputValue(),'system');
+  assert.equal(await page.locator('html').evaluate(html=>getComputedStyle(html).backgroundColor),'rgb(0, 0, 0)');
+  await toggle.focus();
+  await toggle.press('Enter');
+  await applied('light');
+  assert.equal(await setting.inputValue(),'light');
+  await setting.selectOption('system');
+  await applied('dark');
+  await page.emulateMedia({colorScheme:'light'});
+  await applied('light');
+  assert.equal(await toggle.getAttribute('aria-pressed'),'false');
+}
+
 // A second tab receives its own version when both edit the same saved day.
 async function concurrentEditors(browser) {
   const context = await browser.newContext({viewport:{width:390,height:844}});
@@ -184,8 +204,9 @@ async function concurrentEditors(browser) {
     await page.setViewportSize({width:390,height:844});
     await createLinkedDay(page);
     await verifyPhoneHeader(page);
+    await verifyTheme(page);
     await concurrentEditors(browser);
     assert.deepEqual(errors,[]);
-    console.log(engine+': language switch, mobile header, 5 samples, saved frames, song link, private text, archive, validation and reload verified');
+    console.log(engine+': language switch, mobile header, themes, 5 samples, saved frames, song link, private text, archive, validation and reload verified');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

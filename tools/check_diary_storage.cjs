@@ -147,7 +147,41 @@ async function main() {
       await db.removeDay(quick.id);
       check(await db.restoreDayNote(quick.id,deletedSeed)===false && await db.removeDayNote(quick.id,deletedSeed)===null &&
         !await db.getDay(quick.id),'Undo must never recreate a deleted day');
-      return 'versions, photos, audio, pending edits, backups, corruption, drafts, note deletion and undo, stale editors, concurrent note and story changes';
+
+      // The storage API preserves opaque file bytes. Browser decoding is exercised in the editor.
+      const clip={id:'clip',kind:'video',name:'Утро.MOV',blob:new Blob(['original clip'],{type:'video/quicktime'})};
+      const webm={id:'webm',name:'Вечер.webm',blob:new Blob(['second clip'])};
+      const mixed=await db.saveDay({id:'mixed-gallery',date:'2026-12-03',status:'ready',text:'День',
+        photos:[clip,day.photos[0],webm],music:link.music,pendingEdit:{photos:[webm,clip]}});
+      const reopened=await db.getDay(mixed.id);
+      check(reopened.photos.map(db.isGalleryVideo).join(',')==='true,false,true' &&
+        reopened.photos[2].blob.type==='video/webm','Mixed gallery order, types and cover must survive reopening');
+      const [fromZip]=await db.inspectZip(await db.exportZip([reopened]));
+      check(fromZip.photos[1].blob.type==='image/jpeg' && fromZip.photos[0].blob.type==='video/quicktime' &&
+        await fromZip.photos[0].blob.text()==='original clip' &&
+        await fromZip.pendingEdit.photos[0].blob.text()==='second clip','ZIP must preserve mixed media and pending edit order');
+      check((await db.assessImport([fromZip])).skipped===1,'Mixed galleries must match their own backups');
+      await db.removeDay(mixed.id);
+      check((await db.importDays([fromZip])).added===1 && db.isGalleryVideo((await db.getDay(mixed.id)).photos[0]),
+        'A mixed gallery must restore from its backup');
+      const videoDay=await db.saveDay({...mixed,id:'video-only',photos:[clip],pendingEdit:null});
+      check(videoDay.status==='ready','A gallery with only video can complete a day');
+
+      const mib=new Blob([new Uint8Array(1024*1024)]);
+      const sizedVideo=n=>({...clip,name:'clip.mp4',blob:new Blob(Array(n).fill(mib),{type:'video/mp4'})});
+      const [large]=await db.inspectZip(await db.exportZip([{...videoDay,photos:[sizedVideo(26)]}]));
+      check(large.photos[0].blob.size===26*mib.size,'Video ZIP entries can exceed the soundtrack size limit');
+      async function rejectsGallery(photos,reason) {
+        let failed=false;
+        try { await db.saveDay({...videoDay,photos}); } catch { failed=true; }
+        check(failed,reason);
+      }
+      await rejectsGallery(Array(7).fill(clip),'The six-item gallery limit includes videos');
+      await rejectsGallery([sizedVideo(51)],'Each video must fit its own size limit');
+      await rejectsGallery([sizedVideo(46),sizedVideo(45)],'The total gallery must fit in a single-day backup');
+      await rejectsGallery([{...clip,blob:new Blob(['audio'],{type:'audio/webm'})}],'Audio WebM cannot fill a gallery slot');
+      check((await db.getDay(videoDay.id)).revision===videoDay.revision,'Invalid attachments must leave the saved gallery intact');
+      return 'versions, mixed photo/video galleries, media limits, audio, pending edits, backups, corruption, drafts, note deletion and undo, stale editors, concurrent note and story changes';
     },origin.href);
     console.log(engine + ': ' + report + ' OK');
   } finally {

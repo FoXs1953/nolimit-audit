@@ -1,5 +1,6 @@
 import {assessImport, exportZip, importDays, inspectZip, listDays} from './store.js';
 import {t} from './locales/views.js';
+import {t as shellText} from './locales/shell.js';
 import {dayRow, esc, localDate} from './ui.js';
 
 export function downloadBlob(blob, filename) {
@@ -14,6 +15,9 @@ export async function downloadDays(days, filename) {
 }
 export function mountSettings(root, days, ctx) {
   root.innerHTML = '<div class="settings-layout"><section class="settings-panel panel"><h2>'+t('display')+'</h2>'+
+    '<label class="setting-row theme-setting"><strong>'+shellText('theme')+'</strong><select data-theme-preference>'+
+    '<option value="system">'+shellText('themeSystem')+'</option><option value="light">'+shellText('themeLight')+'</option>'+
+    '<option value="dark">'+shellText('themeDark')+'</option></select></label>'+
     '<label class="setting-row"><span class="setting-copy"><strong>'+t('reduceMotion')+'</strong><p>'+t('motionDescription')+'</p></span>'+
     '<input class="motion-switch" type="checkbox" role="switch" aria-label="'+t('reduceMotion')+'"></label></section>'+
     '<section class="settings-panel panel"><h2>'+t('myData')+'</h2><p class="settings-intro">'+t('storageDescription')+'</p>'+
@@ -23,6 +27,11 @@ export function mountSettings(root, days, ctx) {
     '<section class="settings-panel panel"><h2>'+t('aboutApp')+'</h2>'+
     dayRow({title:t('howItWorks'),note:t('aboutDescription'),action:'about',symbol:'info'})+
     '</section></div>';
+  const theme = root.querySelector('[data-theme-preference]');
+  const syncTheme = () => { theme.value = ctx.theme.preference; };
+  syncTheme();
+  theme.onchange = () => ctx.theme.setPreference(theme.value);
+  document.addEventListener('diarythemechange',syncTheme);
   const motion = root.querySelector('.motion-switch');
   motion.checked = ctx.reducedMotion;
   motion.onchange = () => ctx.setMotion(motion.checked);
@@ -63,4 +72,5 @@ export function mountSettings(root, days, ctx) {
     } catch(error){ctx.toast(error.message || t('readError'));} finally {restore.disabled=false;}
   };
   root.querySelector('[data-action="about"]').onclick = ctx.about;
+  return () => document.removeEventListener('diarythemechange',syncTheme);
 }

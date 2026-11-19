@@ -1,4 +1,4 @@
-import {visibleDayNotes} from './store.js';
+import {isGalleryVideo, visibleDayNotes} from './store.js';
 import {postcardMood} from './art.js';
 import {artText} from './locales/art.js';
 import {demos} from './demos.js';
@@ -6,7 +6,7 @@ import {getLanguage,getLocale,translator} from './i18n.js';
 import {archivePublicationLinks,syncArchivePublications} from './social-api.js';
 import {shareText} from './locales/sharing.js';
 import {t} from './locales/views.js';
-import {editDayButton, esc, formatDate, icon} from './ui.js';
+import {editDayButton, galleryThumbnail, esc, formatDate, icon} from './ui.js';
 
 let filtersBeforeLanguageChange;
 
@@ -106,7 +106,7 @@ export function mountLibrary(root, records, examples, ctx) {
     return '<article class="personal-card" data-mood="'+mood+'"'+coverStyle+'>'+
       '<button type="button" class="personal-open" data-id="'+esc(day.id)+'">'+
       '<span class="day-cover'+(image?'':' paper-cover')+'">'+
-      (image?'<img src="'+esc(image)+'" loading="lazy" alt="">':'')+
+      (image?galleryThumbnail(image,isGalleryVideo(day.photos[0])):'')+
       '<time datetime="'+esc(day.date)+'" aria-label="'+dateLabel+'"><b>'+esc(formatDate(day.date,{day:'numeric'}))+'</b>'+
       '<span>'+esc(formatDate(day.date,{weekday:'long'}))+'</span></time>'+
       (draft?'<span class="day-draft">'+icon('pen',13)+t('draft')+'</span>':'')+'</span>'+

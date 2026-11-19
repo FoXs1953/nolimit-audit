@@ -2,7 +2,8 @@ import {api,signInUrl,publicationLink,claimPublication,rememberPublication,forge
 import {shareText as t} from './locales/sharing.js';
 import {presentRecipe,storyLanguage} from './art.js';
 import {musicLink} from './music-link.js';
-import {localAsset} from './store.js';
+import {galleryThumbnail} from './ui.js';
+import {isGalleryVideo, localAsset} from './store.js';
 
 export function socialError(error) {
   if(error?.code==='invalid_music_link')return t('linkError');
@@ -18,7 +19,7 @@ export function socialError(error) {
 async function upload(asset,kind,owner) {
   const data=await localAsset(asset,kind);
   const id=crypto.randomUUID();
-  const mime=data.type || (kind==='photo'?'image/jpeg':'audio/mpeg');
+  const mime=data.type || (kind==='audio'?'audio/mpeg':isGalleryVideo(asset)?'video/mp4':'image/jpeg');
   await api('/uploads/'+id,{method:'POST',body:data.slice(0,data.size,mime),headers:{'X-NoLimit-Account':owner}});
   return id;
 }
@@ -26,7 +27,7 @@ async function snapshot(day,alternative,owner) {
   const recipe=presentRecipe(day);
   const photos=[];
   for (const photo of day.photos) {
-    photos.push({assetId:await upload(photo,'photo',owner),x:photo.x,y:photo.y,color:photo.color});
+    photos.push({...(isGalleryVideo(photo)?{kind:'video'}:{}),assetId:await upload(photo,'photo',owner),x:photo.x,y:photo.y,color:photo.color});
   }
   const source=day.music, music={kind:source.kind,bpm:source.bpm,energy:source.energy};
   if(alternative || source.kind==='link'){
@@ -84,12 +85,12 @@ export function openAccess(ctx,{day,publicationId}){
         const recipe=presentRecipe({...source,status:'ready'});
         let value=publication?.mode || 'private';
         const pictures=(source.photos || []).map(photo=>{
-          if(photo.blob instanceof Blob){const url=URL.createObjectURL(photo.blob);previews.push(url);return url;}
-          return /^(?:\.\/diary\/media\/[\w.-]+|\/api\/social\/media\/[\w/-]+)$/.test(photo.src || '')?photo.src:'';
+          if(photo.blob instanceof Blob){const url=URL.createObjectURL(photo.blob);previews.push(url);return galleryThumbnail(url,isGalleryVideo(photo));}
+          return /^(?:\.\/diary\/media\/[\w.-]+|\/api\/social\/media\/[\w/-]+)$/.test(photo.src || '')?galleryThumbnail(photo.src,isGalleryVideo(photo)):'';
         }).filter(Boolean);
         const choice=(mode)=>'<label class="social-mode"><input type="radio" name="audience" value="'+mode+'" '+(value===mode?'checked':'')+'><span>'+esc(t(mode))+'</span></label>';
         const candidates=people.friends.map(p=>'<label class="social-friend-check"><input type="checkbox" name="recipient" value="'+esc(p.id)+'" '+(selected.has(p.id)?'checked':'')+'><span>'+esc(p.name)+' <small>'+esc(p.code)+'</small></span></label>').join('');
-        root.innerHTML='<form data-sharing-form><p class="social-as">'+esc(t('as',{name:session.user.name}))+'</p><details class="share-preview" '+(!publication?'open':'')+'><summary>'+esc(t('preview'))+'</summary><div class="share-preview-inner"><strong>'+esc(recipe.title || source.title)+'</strong><p>'+esc(source.text)+'</p><div class="share-images">'+pictures.map(url=>'<img src="'+esc(url)+'" alt="">').join('')+'</div><span>'+icon('music',16)+esc(source.music?.kind==='link'?source.music.name || t('track'):t('track'))+'</span></div></details>'+
+        root.innerHTML='<form data-sharing-form><p class="social-as">'+esc(t('as',{name:session.user.name}))+'</p><details class="share-preview" '+(!publication?'open':'')+'><summary>'+esc(t('preview'))+'</summary><div class="share-preview-inner"><strong>'+esc(recipe.title || source.title)+'</strong><p>'+esc(source.text)+'</p><div class="share-images">'+pictures.join('')+'</div><span>'+icon('music',16)+esc(source.music?.kind==='link'?source.music.name || t('track'):t('track'))+'</span></div></details>'+
           '<fieldset class="social-audience"><legend>'+esc(t('audience'))+'</legend>'+['private','all','selected'].map(choice).join('')+'</fieldset>'+
           '<p data-mode-hint></p><div data-recipient-area><label>'+esc(t('find'))+'<input type="search" class="day-field" data-find-person></label>'+
           (candidates?'<div class="social-friend-list">'+candidates+'</div><p data-count aria-live="polite"></p>':'<p>'+esc(t('none'))+'</p><button class="secondary" type="button" data-people>'+esc(t('people'))+'</button>')+'</div>'+

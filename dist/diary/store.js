@@ -13,14 +13,18 @@ const MAX_DAYS = 1500;
 const MAX_FILES = 12000;
 const MAX_JSON = 2 * MIB;
 const MAX_IMAGE = 12 * MIB;
+const MAX_VIDEO = 50 * MIB;
 const MAX_AUDIO = 25 * MIB;
+// The saved gallery, its pending edit and both soundtracks must fit in one ZIP.
+export const MAX_GALLERY_BYTES = 90 * MIB;
 const blobHashes = new WeakMap();
 const blobBytes = new WeakMap();
 const demoFiles = new Map();
 const storageKeys = new Set(['revision','updatedAt','primary','_contentHash','_originId','_noteSeed','_removedNotes']);
 const imageTypes = new Set(['image/jpeg','image/png','image/webp','image/heic','image/heif','image/heic-sequence','image/heif-sequence','image/avif','image/gif']);
+const videoTypes = new Set(['video/mp4','video/webm','video/quicktime']);
 const audioTypes = new Set(['audio/mpeg','audio/mp3','audio/aac','audio/mp4','audio/x-m4a','audio/m4a','audio/wav','audio/wave','audio/x-wav','audio/vnd.wave','audio/ogg','audio/webm','audio/flac','audio/x-flac']);
-const DEMO_PATH = /^(?:\.\/|\/)?diary\/media\/[a-z\d][\w.-]{0,100}\.(?:jpe?g|png|webp|avif|wav|mp3|m4a|ogg)$/i;
+const DEMO_PATH = /^(?:\.\/|\/)?diary\/media\/[a-z\d][\w.-]{0,100}\.(?:jpe?g|png|webp|avif|mp4|m4v|webm|mov|wav|mp3|m4a|ogg)$/i;
 const bad = message => new Error(message);
 let connecting;
 
@@ -110,21 +114,37 @@ function safeTree(value, depth=0, budget={n:0}) {
   }
   throw bad(t('invalidContents'));
 }
+function baseMime(raw) {
+  return String(raw || '').toLowerCase().split(';')[0].trim();
+}
+export function isGalleryVideo(asset) {
+  const mime = baseMime(asset?.blob?.type || asset?.mediaType);
+  if (mime && mime !== 'application/octet-stream') return mime.startsWith('video/');
+  if (asset?.kind) return asset.kind === 'video';
+  return /\.(?:mp4|m4v|webm|mov)$/i.test(asset?.archiveFile || asset?.src || asset?.name || '');
+}
+function galleryKind(asset) { return isGalleryVideo(asset) ? 'video' : 'photo'; }
+function mediaLimit(kind) {
+  return kind === 'video' ? MAX_VIDEO : kind === 'photo' ? MAX_IMAGE : MAX_AUDIO;
+}
 function mediaType(raw, name, kind) {
-  let mime = String(raw || '').toLowerCase().split(';')[0].trim();
+  let mime = baseMime(raw);
+  if (mime === 'video/x-m4v' || mime === 'video/m4v') mime = 'video/mp4';
   if (!mime || mime === 'application/octet-stream') mime = ({
     jpg:'image/jpeg', jpeg:'image/jpeg', webp:'image/webp', png:'image/png', heic:'image/heic',heif:'image/heif',avif:'image/avif',gif:'image/gif',
-    wav:'audio/wav',mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',ogg:'audio/ogg',flac:'audio/flac',webm:'audio/webm'
+    mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:kind==='audio'?'audio/webm':'video/webm',
+    wav:'audio/wav',mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',ogg:'audio/ogg',flac:'audio/flac'
   })[String(name).split('.').pop().toLowerCase()];
-  const allowed = kind === 'photo' ? imageTypes : audioTypes;
-  if (!allowed.has(mime)) throw bad(kind === 'photo' ? t('imageFormat') : t('audioFormat'));
+  const allowed = kind === 'video' ? videoTypes : kind === 'photo' ? imageTypes : audioTypes;
+  if (!allowed.has(mime)) throw bad(t(kind === 'video' ? 'videoFormat' : kind === 'photo' ? 'imageFormat' : 'audioFormat'));
   return mime;
 }
 function checkAsset(asset, kind) {
   if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw bad(t('mediaMissing'));
   if (typeof asset.name !== 'string' || !asset.name.trim() || asset.name.length>1000) throw bad(t('mediaName'));
+  if (kind !== 'audio' && asset.kind != null && asset.kind !== kind) throw bad(t('invalidContents'));
   if (asset.blob instanceof Blob) {
-    if (!asset.blob.size || asset.blob.size > (kind === 'photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('mediaSize'));
+    if (!asset.blob.size || asset.blob.size > mediaLimit(kind)) throw bad(t('mediaSize'));
     mediaType(asset.blob.type,asset.name || asset.src,kind);
   } else if (!DEMO_PATH.test(asset.src || '')) { throw bad(t('localFileMissing')); }
   if (asset.src != null && !DEMO_PATH.test(asset.src)) throw bad(t('mediaUrl'));
@@ -139,7 +159,7 @@ function checkRecord(row, partial=false) {
   }
   if (row.photos != null) {
     if (!Array.isArray(row.photos) || row.photos.length > 6) throw bad(t('photoLimit'));
-    for (const photo of row.photos) checkAsset(photo,'photo');
+    for (const item of row.photos) checkAsset(item,galleryKind(item));
   }
   if (row.music != null) {
     if (row.music.kind === 'file') checkAsset(row.music,'audio');
@@ -154,7 +174,7 @@ function checkRecord(row, partial=false) {
     checkRecord(row.pendingEdit,true);
   }
 }
-function normalizeRecord(input) {
+async function normalizeRecord(input) {
   const row = structuredClone(input);
   delete row._removedNotes;
   if (row.pendingEdit) clearNoteMetadata(row.pendingEdit);
@@ -174,6 +194,9 @@ function normalizeRecord(input) {
   row.music ??= null;
   safeTree(row);
   checkRecord(row);
+  for (const gallery of [row.photos,row.pendingEdit?.photos]) {
+    if (gallery && await galleryBytes(gallery) > MAX_GALLERY_BYTES) throw bad(t('gallerySize'));
+  }
   return row;
 }
 function digest(bytes) {
@@ -190,10 +213,15 @@ function bytesOf(blob) {
   return bytes;
 }
 export async function localAsset(asset, kind) {
-  if (asset.blob instanceof Blob) return asset.blob;
+  if (kind === 'photo') kind=galleryKind(asset);
+  if (asset.blob instanceof Blob) {
+    const blob=asset.blob, type=mediaType(blob.type,asset.name,kind);
+    return blob.type === type ? blob : blob.slice(0,blob.size,type);
+  }
   if (!DEMO_PATH.test(asset.src || '')) throw bad(t('unavailableFile'));
   const src=asset.src.replace(/^(?:\.\/|\/)/,'');
-  let promise = demoFiles.get(src);
+  const key=kind+':'+src;
+  let promise = demoFiles.get(key);
   if (!promise) {
     promise = (async () => {
       const url=new URL(src,document.baseURI);
@@ -201,19 +229,24 @@ export async function localAsset(asset, kind) {
       if (!response?.ok) throw bad(t('sourceFile'));
       const blob=await response.blob();
       const type=mediaType(blob.type,src,kind);
-      if (!blob.size || blob.size > (kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('mediaUnavailable'));
+      if (!blob.size || blob.size > mediaLimit(kind)) throw bad(t('mediaUnavailable'));
       return blob.type === type ? blob : blob.slice(0,blob.size,type);
     })();
-    demoFiles.set(src,promise);
-    promise.catch(()=>demoFiles.delete(src));
+    demoFiles.set(key,promise);
+    promise.catch(()=>demoFiles.delete(key));
   }
   return promise;
 }
+export async function galleryBytes(photos) {
+  const sizes=await Promise.all(photos.map(async asset=>
+    asset.blob instanceof Blob ? asset.blob.size : (await localAsset(asset,galleryKind(asset))).size));
+  return sizes.reduce((total,size)=>total+size,0);
+}
 async function mapMedia(row, transform) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) throw bad(t('invalidEntry'));
-  if (row.photos != null && !Array.isArray(row.photos)) throw bad(t('invalidEntry'));
+  if (row.photos != null && (!Array.isArray(row.photos) || row.photos.length>6)) throw bad(t('photoLimit'));
   const out={...row};
-  if (out.photos) out.photos=await Promise.all(out.photos.map(photo=>transform(photo,'photo')));
+  if (out.photos) out.photos=await Promise.all(out.photos.map(asset=>transform(asset,galleryKind(asset))));
   if (out.music?.kind === 'file') out.music=await transform(out.music,'audio');
   if (out.pendingEdit) out.pendingEdit=await mapMedia(out.pendingEdit,transform);
   return out;
@@ -252,6 +285,7 @@ async function contentHash(row) {
   const change=await mapMedia(row, async (asset,kind)=>{
     const {src,blob,...rest}=asset;
     const bytes=await localAsset(asset,kind);
+    if (kind==='video') rest.mediaType=bytes.type;
     return {...rest, mediaHash:await getBlobHash(bytes)};
   });
   for (const key of storageKeys) delete change[key];
@@ -304,7 +338,7 @@ function legacySeed(day) {
   return visibleDayNotes(day).find(note=>note.text===day.text);
 }
 export async function saveDay(input) {
-  const submitted=normalizeRecord(input);
+  const submitted=await normalizeRecord(input);
   const incoming=visibleDayNotes(submitted);
   let hashes;
   const oldSeed=legacySeed(submitted);
@@ -353,7 +387,7 @@ export async function saveDay(input) {
   }
 }
 export async function appendDayMoment(blank,moment) {
-  const seed=normalizeRecord(blank);
+  const seed=await normalizeRecord(blank);
   if (!validId(moment?.id) || typeof moment.text!=='string' || !moment.text.trim() ||
       moment.text.length>1200 || !Number.isFinite(Date.parse(moment.time))) throw bad(t('invalidMoments'));
   const key=await noteHash(moment);
@@ -451,6 +485,7 @@ export async function makePrimary(id) {
 function extension(mime) {
   if (mime === 'image/jpeg') return 'jpg';
   if (mime.startsWith('image/')) return mime.slice(6).split('-')[0];
+  if (mime.startsWith('video/')) return mime === 'video/quicktime' ? 'mov' : mime.slice(6);
   if (mime.includes('wav') || mime.includes('wave')) return 'wav';
   if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a';
   if (mime === 'audio/mpeg' || mime === 'audio/mp3') return 'mp3';
@@ -470,7 +505,7 @@ export async function exportZip(records) {
     files[path]=bytes;
   }
   for (const [index,input] of records.entries()) {
-    const record=normalizeRecord(input);
+    const record=await normalizeRecord(input);
     const folder=folderName(record,index);
     const media=new Map();
     let number=0;
@@ -483,7 +518,7 @@ export async function exportZip(records) {
       if (!name) {
         name='media/'+String(++number).padStart(2,'0')+'-'+kind+'.'+extension(type);
         media.set(key,name);
-        append(folder+'/'+name,new Uint8Array(await bytes.arrayBuffer()));
+        append(folder+'/'+name,new Uint8Array(await bytesOf(bytes)));
       }
       const {src,blob,...meta}=asset;
       return {...meta, archiveFile:name, mediaType:type};
@@ -497,7 +532,7 @@ export async function exportZip(records) {
     days.push({id:record.id,date:record.date,title:record.title || '',path});
   }
   append('manifest.json',strToU8(JSON.stringify({format:'nolimit-diary',version:1,days})));
-  // Photos and music already have their own compression. Stored files are quick to reopen on a phone.
+  // The media already have their own compression. Stored files are quick to reopen on a phone.
   return new Blob([zipSync(files,{level:0})],{type:'application/zip'});
 }
 
@@ -534,7 +569,7 @@ function indexZip(bytes) {
     if (flags & 1 || ![0,8].includes(method) || !nameSize || nameSize>600 || next>end || local+30>centralStart || view.getUint32(local,true)!==0x04034b50) throw error();
     const name=strFromU8(bytes.subarray(offset+46,nameEnd));
     if (name!=='manifest.json' && !/^days\/[\p{L}\p{N} -]+\/(?:day\.json|media\/[\da-z.-]+)$/u.test(name)) throw error();
-    if (index.has(name) || (name.endsWith('.json') ? size>MAX_JSON : size>MAX_AUDIO) || (total+=size)>MAX_ARCHIVE) throw error();
+    if (index.has(name) || (name.endsWith('.json') ? size>MAX_JSON : size>MAX_VIDEO) || (total+=size)>MAX_ARCHIVE) throw error();
     const localNameSize=view.getUint16(local+26,true), localExtra=view.getUint16(local+28,true);
     const dataStart=local+30+localNameSize+localExtra;
     if (localNameSize!==nameSize || strFromU8(bytes.subarray(local+30,local+30+localNameSize))!==name || dataStart+packed>centralStart ||
@@ -577,7 +612,7 @@ export async function inspectZip(file) {
       if (!asset || typeof asset.archiveFile!=='string' || !/^media\/[\da-z.-]+$/.test(asset.archiveFile) || asset.src || asset.blob) throw bad(t('attachmentMissing'));
       const full=folder+asset.archiveFile;
       const bytes=files[full];
-      if (!bytes || !bytes.length || bytes.length>(kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('attachmentRestore'));
+      if (!bytes || !bytes.length || bytes.length>mediaLimit(kind)) throw bad(t('attachmentRestore'));
       seenPaths.add(full);
       const mime=mediaType(asset.mediaType,full,kind);
       const key=full+':'+mime;
@@ -588,7 +623,7 @@ export async function inspectZip(file) {
     clearNoteMetadata(record);
     delete record._contentHash;
     if (record._originId && !validId(record._originId)) delete record._originId;
-    const row=normalizeRecord(record);
+    const row=await normalizeRecord(record);
     row._contentHash=await contentHash(row);
     records.push(row);
   }
@@ -599,7 +634,7 @@ async function merge(records, commit) {
   if (!Array.isArray(records) || records.length>MAX_DAYS) throw bad(t('tooManyEntries'));
   const validated=[];
   for (const input of records) {
-    const row=normalizeRecord(input);
+    const row=await normalizeRecord(input);
     clearNoteMetadata(row);
     row._contentHash=await contentHash(row);
     validated.push(await encodeDay(row));
