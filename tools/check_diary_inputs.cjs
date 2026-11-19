@@ -120,6 +120,17 @@ async function saveAndReadCard(page) {
     await saveAndReadCard(page);
     await page.reload();
     assert.equal(await gradient(hero), palette.get('angry'), 'The chosen colour survives saving and reopening');
+    await page.goto(new URL('#archive', origin).href);
+    const galleryCard = page.locator('.personal-card[data-mood="angry"]').first();
+    await galleryCard.waitFor();
+    assert.equal(await galleryCard.evaluate(el => el.style.getPropertyValue('--cover-pigment')), colors[1]);
+    for (const width of [320, 1024]) {
+      await page.setViewportSize({width, height:844});
+      assert.match(await gradient(galleryCard), /gradient\(/, 'Saved cards also have a coloured jacket');
+      const bounds = await galleryCard.boundingBox();
+      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, 'The entire card fits the viewport');
+      assert.ok(await galleryCard.getByRole('button', {name:'Изменить день', exact:true}).isVisible());
+    }
     assert.deepEqual(errors, []);
     console.log(engine + ': text changed motion ' + first.motion + ' → ' + second.motion +
       ', cover changed colour ' + first.color + ' → ' + second.color +

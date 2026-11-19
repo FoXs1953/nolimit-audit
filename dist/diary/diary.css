@@ -149,30 +149,51 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
 .day-month h2{margin:0 0 12px;font-size:clamp(1.15rem,2vw,1.45rem);line-height:1.22;letter-spacing:-.04em}
 .day-month h2::first-letter{text-transform:uppercase}
 .day-month-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(265px,100%),1fr));gap:16px;align-items:start}
-.personal-card{min-width:0;border:1px solid var(--line);border-radius:20px;background:#fff;overflow:hidden}
-.personal-card:focus-within{outline:3px solid #5085ff;outline-offset:2px}
-.personal-open{display:block;width:100%;padding:0;color:var(--ink);text-align:start}
-.day-cover{display:block;position:relative;overflow:hidden;width:100%;aspect-ratio:1.9;background:#e5e9ef}
+.personal-card {
+  --jacket:color-mix(in srgb,var(--mood-base) 90%,var(--cover-pigment,var(--mood-base)));
+  --stamp:color-mix(in srgb,var(--mood-edge) 36%,#fff8ef);
+  min-width:0;
+  overflow:hidden;
+  border:1px solid color-mix(in srgb,var(--mood-shade) 85%,#253047);
+  border-radius:21px;
+  color:var(--mood-ink);
+  background-color:var(--mood-base);
+  background-image:linear-gradient(146deg,var(--mood-edge),var(--jacket) 46%,var(--mood-shade));
+  box-shadow:0 2px 4px #1720340a,0 6px 14px -9px color-mix(in srgb,var(--mood-shade) 70%,#263044);
+}
+.personal-open{display:block;width:100%;padding:8px 8px 0;color:inherit;text-align:start}
+.personal-card button:focus-visible{outline:3px solid var(--mood-ink);outline-offset:-4px}
+.day-cover{display:block;position:relative;isolation:isolate;overflow:hidden;width:100%;aspect-ratio:1.9;border-radius:13px;background:var(--stamp)}
 .day-cover img{display:block;width:100%;height:100%;object-fit:cover}
-.day-cover time{position:absolute;left:12px;bottom:12px;display:grid;align-content:center;padding:7px 10px;min-width:62px;max-width:calc(100% - 24px);border-radius:11px;background:#fff;color:#1b2331;line-height:1.1}
-.day-cover time b{font-size:1.35rem;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.045em}
-.day-cover time span{margin-top:3px;font-size:.75rem;font-weight:550}
-.day-draft{display:inline-flex;align-items:center;gap:5px;position:absolute;right:12px;top:12px;max-width:calc(100% - 24px);border-radius:99px;padding:5px 9px;background:#fff;color:#364456;font-size:.77rem;font-weight:600}
-.paper-cover{background-color:color-mix(in srgb,var(--mood-base,#a9b6c8) 11%,#faf9f5);background-image:repeating-linear-gradient(0deg,transparent 0 22px,#243d5612 22px 23px);border-bottom:1px solid #2337550d}
-.paper-cover time{left:18px;bottom:14px;background:transparent;padding:0}
-.paper-cover time b{font-size:clamp(2.5rem,6vw,3.4rem);font-weight:600}
-.paper-cover time span{font-size:.85rem}
-.day-card-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px}
-.day-card-copy{display:grid;min-width:0;gap:7px}
-.day-card-copy strong{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:1.05rem;line-height:1.25;letter-spacing:-.023em}
-.day-track{min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.83rem;color:#566277}
-.day-track svg{vertical-align:-2px;margin-right:5px}
-.day-open-icon{display:grid;flex:none;place-items:center;width:28px;height:28px;border-radius:50%;background:#f1f4fa;color:#43536f}
-.day-card-actions{display:flex;flex-wrap:wrap;gap:0 12px;padding:0 15px;border-top:1px solid var(--line)}
-.day-card-actions .versions-link{display:block;margin:0;padding:6px 0;text-align:start;font-size:.83rem}
+.day-cover time {
+  position:absolute;inset-inline-start:12px;bottom:12px;
+  display:grid;align-content:center;width:max-content;max-width:calc(100% - 24px);
+  border-radius:8px;padding:7px 11px 8px;
+  background:var(--stamp);color:#242733;box-shadow:0 2px 5px #10192c20;line-height:1.1;
+}
+.day-cover time b{font-size:1.65rem;line-height:1;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.055em}
+.day-cover time span{margin-top:3px;font-size:.8rem;font-weight:600}
+.day-draft{display:inline-flex;align-items:center;gap:5px;position:absolute;inset-inline-end:10px;top:10px;max-width:calc(100% - 20px);border-radius:99px;padding:5px 9px;background:#fffaf4;color:#323745;font-size:.8rem;font-weight:600}
+.paper-cover {
+  background-color:var(--stamp);
+  background-image:repeating-linear-gradient(0deg,transparent 0 21px,#232b4417 21px 22px);
+}
+.paper-cover time{inset-inline-start:16px;bottom:11px;padding:0;background:transparent;box-shadow:none}
+.paper-cover time b{font-size:clamp(2.6rem,6vw,3.5rem)}
+.paper-cover time span{font-size:.88rem}
+.day-card-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 8px 16px}
+.day-card-copy{display:grid;min-width:0;gap:6px}
+.day-card-copy strong{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:1.12rem;line-height:1.22;letter-spacing:-.025em}
+.day-track{min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem}
+.day-track svg{vertical-align:-2px;margin-inline-end:6px}
+.day-open-icon{display:grid;flex:none;place-items:center;width:30px;height:30px;border-radius:50%;color:var(--mood-ink);background:color-mix(in srgb,var(--mood-ink) 12%,transparent);border:1px solid color-mix(in srgb,var(--mood-ink) 32%,transparent)}
+.day-card-actions{display:flex;flex-wrap:wrap;gap:0 12px;padding:2px 7px;border-top:1px solid color-mix(in srgb,var(--mood-ink) 22%,transparent);background:color-mix(in srgb,var(--mood-shade) 70%,var(--jacket))}
+.day-card-actions .day-edit,.day-card-actions .versions-link{color:inherit;border-radius:9px}
+.day-card-actions .versions-link{display:block;margin:0;padding:6px 9px;text-align:start;font-size:.86rem}
+.day-card-actions button:is(:hover,:focus-visible){background:var(--stamp);color:#242733;outline-color:#242733}
 .personal-gallery .empty-state{min-height:245px;align-content:center}
 .personal-gallery .empty-icon{background:#e9efff;color:#1a54cd}
-@media(hover:hover){.personal-open:hover .day-open-icon{background:#e5edfd;color:#174cbd}}
+@media(hover:hover){.personal-open:hover .day-open-icon{background:var(--stamp);color:#242733}}
 @media(max-width:480px){.day-month-grid{gap:12px}.personal-card{border-radius:18px}}
 
 .home-personal .add-note{display:inline-flex;align-items:center;justify-content:center;gap:9px;max-width:100%;min-height:46px;padding:10px 16px;border-radius:14px;background:#154dd1;color:#fff;font-size:.95rem;font-weight:650;line-height:1.2;text-align:start;box-shadow:0 2px 5px #1846ac20}
@@ -199,5 +220,5 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
 .latest-note:not(:has(details[open]))>ul p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .diary-card>.day-notes{grid-column:1/-1}
 .card-film[data-inline] .day-notes{display:none}
-.day-note-excerpt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:.88rem;line-height:1.4;color:#425069}
+.day-note-excerpt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:.88rem;line-height:1.4}
 .day-note-excerpt svg{vertical-align:-2px;margin-inline-end:6px}
