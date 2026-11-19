@@ -1,3 +1,4 @@
+import {visibleDayNotes} from './store.js';
 import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage, getLocale} from './i18n.js';
@@ -33,13 +34,13 @@ export function mountLibrary(root, records, examples, ctx) {
         body.querySelectorAll('[data-version]').forEach(button => { button.onclick = () => open(group.find(day=>day.id===button.dataset.version)); });
     });
   }
-  root.innerHTML = (examples ? '' :
+  root.innerHTML = (examples || !days.length ? '' :
     '<div class="library-tools"><label class="search-box">' + icon('search',19) +
     '<span class="ab-sr">'+t('searchArchive')+'</span><input type="search" placeholder="'+t('searchHint')+'" data-search></label>' +
     '<label class="month-select"><span class="ab-sr">'+t('chooseMonth')+'</span><select data-month><option value="">'+t('allMonths')+'</option>' +
     [...new Set(days.map(day=>day.date.slice(0,7)))].map(m => '<option value="' + esc(m) + '">' +
     esc(formatDate(m+'-01',{month:'long',year:'numeric'})) + '</option>').join('') + '</select></label></div>') +
-    '<div class="library-grid" data-grid></div>';
+    '<div class="'+(examples ? 'library-grid' : 'personal-gallery')+'" data-grid></div>';
   const grid = root.querySelector('[data-grid]');
   const search = root.querySelector('[data-search]'), month = root.querySelector('[data-month]');
   if (search && filtersBeforeLanguageChange) {
@@ -53,6 +54,39 @@ export function mountLibrary(root, records, examples, ctx) {
     const url = first?.blob ? URL.createObjectURL(first.blob) : first?.src || '';
     thumbnails.set(day.id,url); return url;
   }
+  function personalCard(day) {
+    const image = photo(day);
+    const draft = day.status !== 'ready';
+    const note = visibleDayNotes(day).at(-1);
+    const copies = variants.get(day.date).length;
+    const dateLabel = esc(formatDate(day.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
+    return '<article class="personal-card" data-mood="'+postcardMood(day)+'">'+
+      '<button type="button" class="personal-open" data-id="'+esc(day.id)+'">'+
+      '<span class="day-cover'+(image?'':' paper-cover')+'">'+
+      (image?'<img src="'+esc(image)+'" loading="lazy" alt="">':'')+
+      '<time datetime="'+esc(day.date)+'" aria-label="'+dateLabel+'"><b>'+esc(formatDate(day.date,{day:'numeric'}))+'</b>'+
+      '<span>'+esc(formatDate(day.date,{weekday:'long'}))+'</span></time>'+
+      (draft?'<span class="day-draft">'+icon('pen',13)+t('draft')+'</span>':'')+'</span>'+
+      '<span class="day-card-footer"><span class="day-card-copy"><strong>'+esc(label(day))+'</strong>'+
+      (note && note.text!==label(day)?'<span class="day-note-excerpt">'+icon('pen',14)+'<span class="ab-sr">'+t('noteLabel')+' </span>'+esc(note.text)+'</span>':'')+
+      (day.music?.name?'<span class="day-track">'+icon('music',15)+esc(day.music.name)+'</span>':'')+
+      '</span><span class="day-open-icon">'+icon('chevron',16)+'</span></span></button>'+
+      (draft || copies>1?'<div class="day-card-actions">'+
+        (draft?'<button type="button" class="versions-link" data-draft="'+esc(day.id)+'">'+t('draftActions')+'</button>':'')+
+        (copies>1?'<button type="button" class="versions-link" data-versions="'+esc(day.date)+'">'+t('versions')+' · '+copies+'</button>':'')+'</div>':'')+
+      '</article>';
+  }
+  function personalMonths(entries) {
+    const months = new Map();
+    for(const day of entries) {
+      const month = day.date.slice(0,7);
+      if(!months.has(month)) months.set(month,[]);
+      months.get(month).push(personalCard(day));
+    }
+    return [...months].map(([month,cards])=>'<section class="day-month" aria-labelledby="month-'+esc(month)+'">'+
+      '<h2 id="month-'+esc(month)+'">'+esc(formatDate(month+'-01',{month:'long',year:'numeric'}))+'</h2>'+
+      '<div class="day-month-grid">'+cards.join('')+'</div></section>').join('');
+  }
   function paint() {
     const query = terms(search?.value);
     filtered = [];
@@ -60,29 +94,27 @@ export function mountLibrary(root, records, examples, ctx) {
       if (month?.value && !date.startsWith(month.value)) continue;
       const matches = query ? group.filter(day =>
         terms([label(day),day.titleOverride,date,formatDate(date),day.text,day.caption,day.music?.name,
-          ...(day.moments || []).map(moment=>moment.text)].join(' ')).includes(query)) : group;
+          ...visibleDayNotes(day).map(moment=>moment.text)].join(' ')).includes(query)) : group;
       const day = matches.find(version => version.primary !== false) || matches[0];
       if (day) filtered.push(day);
     }
     if (!filtered.length) {
       const empty = !days.length;
-      grid.innerHTML = '<section class="panel empty-state"><div class="empty-icon">' + icon(empty?'archive':'search',27) +
+      grid.innerHTML = '<section class="panel empty-state"><div class="empty-icon">' + icon(empty?'book':'search',27) +
         '</div><h2>' + t(empty?'emptyArchive':'noResults') +
         '</h2><p>'+t(empty?'firstDay':'trySearch') +
         '</p><button class="primary" data-empty>' + t(empty?'writeDay':'resetSearch') + '</button></section>';
       grid.querySelector('[data-empty]').onclick = () => { if(empty) ctx.edit(); else {search.value='';month.value='';paint();search.focus();} };
       return;
     }
+    if(!examples) { grid.innerHTML=personalMonths(filtered);return; }
     grid.innerHTML = filtered.map(day => {
       const image = photo(day);
-      const copies = variants.get(day.date).length;
       return '<article class="library-item panel" data-mood="' + postcardMood(day) + '"><button class="library-open" data-id="' + esc(day.id) + '">' +
         (image ? '<img class="library-photo" loading="lazy" src="' + esc(image) + '" alt="">' : '<span class="library-photo empty-cover">'+icon('pen',30)+'</span>') +
         '<span class="library-copy"><small>' + esc(formatDate(day.date)) +
         (day.status !== 'ready' ? ' · '+t('draft') : '') + '</small><strong>' + esc(label(day)) +
-        '</strong><span>'+esc(day.music?.name || t('continueEntry'))+'</span></span><i>'+icon('chevron',17)+'</i></button>'+
-        (!examples && day.status!=='ready'?'<button class="versions-link" data-draft="'+esc(day.id)+'">'+t('draftActions')+'</button>':'') +
-        (!examples && copies>1?'<button class="versions-link" data-versions="'+esc(day.date)+'">'+t('versions')+' · '+copies+'</button>':'') + '</article>';
+        '</strong><span>'+esc(day.music?.name || t('continueEntry'))+'</span></span><i>'+icon('chevron',17)+'</i></button></article>';
     }).join('');
   }
   grid.onclick = event => {

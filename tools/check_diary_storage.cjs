@@ -61,7 +61,33 @@ async function main() {
       const drafts=await db.inspectZip(await db.exportZip([moment,link]));
       check(drafts.find(r=>r.id===moment.id).moments[0].text==='Запах дождя','An unfinished moment must survive export');
       check(drafts.find(r=>r.id===link.id).music.url===link.music.url,'A music link must survive export');
-      return 'versions, photos, audio, pending edits, backup preview, ZIP restore, duplicate import, corruption, drafts';
+      const freshDate='2026-11-26';
+      const seed=id=>({id,date:freshDate,status:'draft',moments:[]});
+      const note=(id,text,n)=>({id,text,time:`2026-11-26T08:00:0${n}.000Z`});
+      const firstNote=note('note-a','Пока было тихо',1),secondNote=note('note-b','Шаги на лестнице',2);
+      await Promise.all([db.appendDayMoment(seed('new-a'),firstNote),db.appendDayMoment(seed('new-b'),secondNote)]);
+      let todayRows=(await db.listDays()).filter(item=>item.date===freshDate);
+      check(todayRows.length===1 && todayRows[0].moments.length===2,'Concurrent first notes must create one draft');
+      const snapshot=todayRows[0];
+      const repeat=await db.appendDayMoment(seed('retry'),firstNote);
+      check(repeat.moments.length===2 && repeat.revision===snapshot.revision,'A retry must be idempotent');
+      check(db.visibleDayNotes(undefined).length===0 && db.visibleDayNotes(snapshot)[0].id==='note-a','Notes must be chronological and empty days supported');
+      const published=await db.saveDay({...snapshot,text:'Запись автора',status:'ready',photos:day.photos,music:day.music});
+      const ready=await db.appendDayMoment(seed('ready'),note('note-c','Свет изменился',3));
+      check(ready.id===published.id && ready.status==='ready' && !ready.pendingEdit && ready.text===published.text &&
+        ready.moments.length===3,'Appending to a published day keeps it published and leaves the story alone');
+      const editing=await db.saveDay({...published,pendingEdit:{status:'draft',text:'Мой несохранённый абзац',moments:published.moments}});
+      check(editing.id===published.id && editing.moments.length===3 && editing.pendingEdit.moments.length===3,'A previous editor snapshot must retain a newly committed note on the original day');
+      const oldNote={text:'Старая заметка без ID',time:'2026-11-26T08:00:04.000Z'};
+      const legacy={...editing,pendingEdit:{...editing.pendingEdit,moments:[...editing.moments,oldNote,oldNote]}};
+      check(db.visibleDayNotes(legacy).length===4 && db.visibleDayNotes(legacy)[3].text===oldNote.text,'Pending-only legacy notes must appear once without re-saving');
+      await db.saveDay(legacy);
+      const updated=await db.appendDayMoment(seed('pending'),note('note-e','Последняя деталь',5));
+      check(updated.text===published.text && updated.pendingEdit.text===editing.pendingEdit.text &&
+        updated.moments.length===5 && updated.pendingEdit.moments.length===5,'A new note must reach both views while preserving unpublished changes');
+      const roundtrip=await db.inspectZip(await db.exportZip([updated]));
+      check((await db.assessImport(roundtrip)).skipped===1 && db.visibleDayNotes(roundtrip[0]).length===5,'Backup and duplicate detection must preserve appended notes');
+      return 'versions, photos, audio, pending edits, backup preview, ZIP restore, duplicate import, corruption, drafts, concurrent and published-day notes';
     },origin.href);
     console.log(engine + ': ' + report + ' OK');
   } finally {

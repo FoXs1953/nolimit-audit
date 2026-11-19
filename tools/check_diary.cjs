@@ -32,7 +32,7 @@ async function gotoPage(page,section) {
   const mobile=page.getByRole('navigation',{name:'Основная навигация'});
   const nav=await mobile.isVisible()?mobile:page.getByRole('navigation',{name:'Разделы дневника'});
   const labels={
-    today:['Сегодня','Мой дневник'],archive:['Архив','Мой архив'],examples:['Примеры','Примеры дней'],settings:['Настройки','Настройки']
+    today:['Сегодня','Мой дневник'],archive:['Мои дни','Мои дни'],examples:['Примеры','Примеры дней'],settings:['Настройки','Настройки']
   };
   await by(nav,labels[section][await mobile.isVisible()?0:1]).click();
   await page.waitForURL('**/#'+section);
@@ -77,9 +77,9 @@ async function journey(browser,dir,errors) {
   try {
     const page=await ctx.newPage();logErrors(page,errors);
     await ready(page);await layout(page);
-    await by(main(page),/^Поймать момент/,false).click();
+    await by(main(page),/^Добавить заметку/,false).click();
     await page.getByRole('textbox',{name:'Что запомнилось?'}).fill(note);
-    await by(page.getByRole('dialog'),'Добавить в день').click();
+    await by(page.getByRole('dialog'),'Сохранить заметку').click();
     await by(main(page),'Продолжить запись').waitFor();await page.reload();
     await by(main(page),'Продолжить запись').click();
     const story=page.getByRole('textbox',{name:'Текст дня'});
@@ -118,7 +118,26 @@ async function journey(browser,dir,errors) {
     await gotoPage(page,'today');
     await by(main(page),'Открыть мой день').waitFor();
     assert.match(await page.locator('[data-cover]').getAttribute('src'),/^blob:/);
-    await gotoPage(page,'archive');await search(page,'камышах');
+    const lateNote='После заката на мосту зажглись фонари.';
+    await by(main(page),'Добавить заметку').click();
+    await page.getByRole('textbox',{name:'Что запомнилось?'}).fill(lateNote);
+    await by(page.getByRole('dialog'),'Сохранить заметку').click();
+    await page.locator('.latest-note').getByText(lateNote,{exact:true}).waitFor();
+    await by(main(page),'Открыть мой день').click();
+    await page.reload();
+    const cardNotes=page.locator('.diary-card > .day-notes');
+    for (const expected of [note,lateNote]) {
+      await cardNotes.getByText(expected,{exact:true}).waitFor();
+    }
+    await by(main(page),'Оживить открытку').click();
+    await page.getByRole('dialog').locator('.day-notes').getByText(lateNote,{exact:true}).waitFor();
+    await by(page.getByRole('dialog'),'Закрыть').click();
+    await page.getByRole('dialog').waitFor({state:'hidden'});
+
+    await gotoPage(page,'archive');
+    await search(page,lateNote);
+    await page.locator('.personal-card .day-note-excerpt').filter({hasText:lateNote}).waitFor();
+    await search(page,'камышах');
     const found=by(main(page),new RegExp(firstDay),false);await found.waitFor();
     await search(page,'такой записи здесь нет');await by(main(page),'Сбросить поиск').click();await found.click();
     await by(main(page),'Изменить день').click();

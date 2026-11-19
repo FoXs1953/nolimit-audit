@@ -64,14 +64,24 @@ async function verifyVideoPostcard(page) {
   for(const key of ['play','mute','prev','next','counter']){
     assert.equal(await card(key).isVisible(),false,'A single-photo video postcard hides redundant '+key);
   }
-  const photo=viewer.locator('.viewer-photo-well');
-  const [desktopPhoto,desktopVideo]=await Promise.all([photo.boundingBox(),iframe.boundingBox()]);
-  assert.ok(Math.abs(desktopPhoto.y-desktopVideo.y)<=2,'Photo and video have a common top edge on desktop');
-  assert.ok(Math.abs(desktopPhoto.width-desktopVideo.width)<=2,'Desktop media columns have equal widths');
+  async function mediaBounds() {
+    // A viewport change can start a different native sheet animation in WebKit.
+    // Read every edge in a single layout after the sheet reaches its final position.
+    return viewer.evaluate(async dialog=>{
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await Promise.allSettled(dialog.getAnimations().map(animation=>animation.finished));
+      return ['.viewer-photo-well','iframe','.viewer-caption'].map(selector=>{
+        const {x,y,width,height}=dialog.querySelector(selector).getBoundingClientRect();
+        return {x,y,width,height};
+      });
+    });
+  }
+  const [desktopPhoto,desktopVideo]=await mediaBounds();
+  assert.ok(Math.abs(desktopPhoto.y-desktopVideo.y)<=2 && Math.abs(desktopPhoto.width-desktopVideo.width)<=2,'Desktop columns share top and width');
   for(const width of [390,320]){
-    await page.setViewportSize({width,height:780});
-    const [p,v,caption]=await Promise.all([photo.boundingBox(),iframe.boundingBox(),viewer.locator('.viewer-caption').boundingBox()]);
-    assert.ok(caption && p.y+p.height<=v.y+1 && v.y+v.height<=caption.y+1,'Phone order is photo, video, caption');
+    await page.setViewportSize({width,height:844});
+    const [p,v,caption]=await mediaBounds();
+    assert.ok(caption.height>0 && p.y+p.height<=v.y+1 && v.y+v.height<=caption.y+1,'Phone order is photo, video, caption');
     assert.ok(Math.abs(p.x-v.x)<=2 && Math.abs(p.width-v.width)<=2,'Phone media share horizontal margins');
     assert.ok(v.width>=200 && v.height>=200 && v.x+v.width<=width,'The provider fits the phone viewport');
   }

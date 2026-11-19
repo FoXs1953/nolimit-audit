@@ -69,10 +69,10 @@ async function createLinkedDay(page) {
   await page.locator('#dock [data-route="today"]').click();
   await page.locator('[data-action="moment"]').click();
   const note = page.getByRole('textbox',{name:'Есіңде не қалды?'});
-  await page.getByRole('button',{name:'Күнге қосу',exact:true}).click();
+  await page.getByRole('button',{name:'Жазбаны сақтау',exact:true}).click();
   assert.equal(await note.evaluate(el=>el.validationMessage),'Кемінде бір сөз жаз.');
   await note.fill(story);
-  await page.getByRole('button',{name:'Күнге қосу',exact:true}).click();
+  await page.getByRole('button',{name:'Жазбаны сақтау',exact:true}).click();
   await page.getByRole('button',{name:'Жазбаны жалғастыру',exact:true}).click();
   const editorURL = page.url();
   await language(page,'en');
@@ -125,9 +125,9 @@ async function createLinkedDay(page) {
   await page.getByRole('dialog').getByText(story,{exact:true}).first().waitFor();
   await closeDialog(page);
   await page.locator('#dock [data-route="archive"]').click();
-  await page.getByRole('searchbox',{name:'Search archive'}).fill('жаңбыр');
+  await page.getByRole('searchbox',{name:'Search my days'}).fill('жаңбыр');
   await language(page,'kk');
-  assert.equal(await page.getByRole('searchbox',{name:'Мұрағаттан іздеу'}).inputValue(),'жаңбыр');
+  assert.equal(await page.getByRole('searchbox',{name:'Күндерімнен іздеу'}).inputValue(),'жаңбыр');
   await page.getByText(savedTitle,{exact:true}).click();
   await page.getByRole('heading',{name:savedTitle,exact:true}).waitFor();
   await page.locator('#dock [data-route="settings"]').click();

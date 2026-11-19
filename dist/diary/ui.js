@@ -1,4 +1,5 @@
 import {t} from './locales/shell.js';
+import {getLocale} from './i18n.js';
 export {formatDate} from './i18n.js';
 
 const symbols = {
@@ -46,6 +47,19 @@ export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
 export function localDate() {
   const now = new Date();
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+}
+
+export function noteList(notes, latestOnly=false) {
+  if (!notes.length) return '';
+  const displayed=latestOnly ? notes.slice(-1) : notes;
+  const formatter=new Intl.DateTimeFormat(getLocale(),{hour:'2-digit',minute:'2-digit'});
+  return '<section class="day-notes'+(latestOnly?' latest-note':'')+'"><h3>'+t(latestOnly?'latestNote':'savedNotes')+
+    '</h3><ul>'+displayed.map(note=>{
+      const stamp=note.time ? new Date(note.time) : null;
+      const time=stamp && Number.isFinite(stamp.valueOf()) ?
+        '<time datetime="'+stamp.toISOString()+'">'+esc(formatter.format(stamp))+'</time>' : '';
+      return '<li>'+time+'<p>'+esc(note.text)+'</p></li>';
+    }).join('')+'</ul></section>';
 }
 
 export function dayRow({title, note, symbol, action, trailing='', image=''}) {
