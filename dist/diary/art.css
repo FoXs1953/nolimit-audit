@@ -1,0 +1,69 @@
+.diary-card [hidden]{display:none!important}
+.diary-card .card-art{pointer-events:auto}
+.diary-card .card-print{position:relative;width:min(62%,200px);aspect-ratio:4/4.8;display:block;background:none;border:0;padding:0;transform:rotate(var(--day-tilt,3deg));touch-action:pan-y}
+.diary-card .card-print:active:not(:disabled){transform:rotate(var(--day-tilt,3deg)) scale(.975)}
+.card-back,.card-middle,.card-print-paper{position:absolute;inset:0;border-radius:12px}
+.card-back{transform:translate(6%,-3%) rotate(10deg);background:#c8dcf6bd;border:1px solid #e6f1ffb3}
+.card-middle{transform:translate(-5%,1%) rotate(-9deg);background:#dce9f9;border:1px solid #f6faff}
+.card-print-paper{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:6px;background:linear-gradient(145deg,#fff 45%,#eef3fb);box-shadow:0 16px 27px -9px #0029769e;padding:6.5% 6.5% 5%}
+.card-print-clip{display:block;overflow:hidden;border-radius:5px;background:var(--day-paper);position:relative}
+.card-print-clip:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 1px #0001}
+.card-print-clip img{display:block;height:100%;width:100%;object-fit:cover}
+.card-paper-foot{display:flex;justify-content:space-between;gap:5px;align-items:center;color:#45526b;font-size:clamp(.62rem,.95vw,.78rem);line-height:1.1;font-weight:600}
+.card-paper-foot:before{content:"";height:7px;width:7px;border-radius:2px;background:var(--day-paper)}
+.card-paper-foot span:first-of-type{margin-right:auto}
+.diary-card .card-row-next{display:flex;margin-left:auto;color:#798398}
+.diary-card .card-caption{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.diary-card .ab-hero h2,.diary-card .ab-row-name,.diary-card .card-track{overflow-wrap:anywhere}
+.card-track{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:.9rem}
+.card-track strong{font-weight:600}
+.card-track a,.card-notes a{color:var(--blue);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.card-track span{flex:none;color:var(--muted);font-variant-numeric:tabular-nums}
+.card-sound{min-height:44px;padding:0 13px;background:#edf3ff;border-radius:14px;color:#194daf;font-size:.88rem;font-weight:600}
+.card-sound[aria-pressed=true]{background:#f0f1f4;color:#515c6c}
+.diary-card .card-status{color:var(--muted);font-size:.85rem;line-height:1.45;margin-top:8px}
+.diary-card .card-status:empty{display:none}
+.card-notes{line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+.card-notes section+section,.card-notes p+section{border-top:1px solid var(--line);padding-top:13px;margin-top:13px}
+.card-notes h3{font-size:1rem;margin:0 0 4px}
+.card-notes p{margin:0}
+.card-notes .card-original{white-space:pre-wrap}
+.card-notes ul{margin:8px 0;padding-left:20px}
+.card-notes .secondary{margin-top:16px}
+.card-full-print{margin:0 auto;background:linear-gradient(165deg,#fff 30%,color-mix(in srgb,var(--day-paper) 10%,white));color:var(--ink);padding:10px 10px 14px;border:1px solid var(--line);border-radius:15px;max-width:400px}
+.card-full-photo{display:block;margin:auto;max-width:100%;max-height:53vh;object-fit:contain;border-radius:6px;background:#eff1f6}
+.card-full-print figcaption{margin:12px 5px 0;display:grid;gap:5px}
+.card-full-print figcaption small{color:var(--muted)}
+.card-full-print figcaption strong{font-size:1.2rem;letter-spacing:-.03em}
+.card-full-print figcaption p{line-height:1.4;margin:0}
+@keyframes day-float{from{transform:scale(1.01)}to{transform:scale(1.075) translateX(-.8%)}}
+@keyframes day-lift{from{transform:scale(1.035) translateY(1%)}to{transform:scale(1.1) translateY(-1.9%)}}
+@keyframes day-pan{from{transform:scale(1.1) translateX(-2%)}to{transform:scale(1.1) translateX(2%)}}
+@keyframes day-cut{0%,44%{transform:scale(1.02)}48%,100%{transform:scale(1.09) translateX(1%)}}
+.diary-card.is-playing:not(.is-still) .card-print-clip img{animation:day-float var(--day-duration) ease-in-out alternate infinite}
+.diary-card.is-playing[data-motion=lift] .card-print-clip img{animation-name:day-lift}
+.diary-card.is-playing[data-motion=pan] .card-print-clip img{animation-name:day-pan}
+.diary-card.is-playing[data-motion=cut] .card-print-clip img{animation-name:day-cut}
+@media(min-width:1000px){.diary-card .ab-evidence{grid-column:2}.diary-card .ab-player{align-self:stretch;justify-content:flex-start}}
+@media(max-width:660px){.diary-card .card-print{width:min(74%,170px)}}
+@media(max-width:440px){
+  .diary-card .ab-hero{min-height:296px}
+  .diary-card .ab-hero h2{max-width:100%;padding-right:.3rem}
+  .diary-card .card-caption{max-width:47%;min-height:auto;display:block;max-height:5.7em}
+  .diary-card .ab-art{inset:auto 4% 8% auto;min-height:0}
+  .diary-card .card-print{width:82%;max-width:136px}
+  .diary-card .ab-hero-copy{min-height:296px;align-content:start}
+  .diary-card .ab-hero-copy .ab-action{align-self:end;margin-top:18px}
+}
+@media(prefers-reduced-motion:reduce){.diary-card .card-print-clip img{animation:none!important}}
+.diary-card .card-print-paper{background:linear-gradient(155deg,#fff 20%,color-mix(in srgb,var(--day-paper) 19%,#fff));border-bottom:4px solid color-mix(in srgb,var(--day-paper) 68%,#fff)}
+.diary-card[data-motion=lift] .card-print-clip:after{box-shadow:inset 0 0 18px #42332038;background:linear-gradient(160deg,#fff0 68%,color-mix(in srgb,var(--day-paper) 28%,transparent))}
+.diary-card[data-motion=pan] .card-print-paper{padding:4% 4% 6%;border-top:5px solid var(--day-paper)}
+.diary-card[data-motion=cut] .card-print-clip{border-radius:1px;clip-path:polygon(0 0,100% 0,100% 88%,87% 100%,0 100%)}
+.diary-card[data-motion=float] .card-print-clip:after{background:linear-gradient(170deg,transparent 60%,color-mix(in srgb,var(--day-paper) 30%,transparent))}
+@media(max-width:440px){
+  .diary-card .ab-hero-copy{pointer-events:none}
+  .diary-card .ab-hero-copy button{pointer-events:auto}
+}
+.card-paper-foot{white-space:nowrap}
+.card-paper-foot span:first-of-type{overflow:hidden;text-overflow:ellipsis}
