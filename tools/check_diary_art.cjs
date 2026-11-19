@@ -49,7 +49,11 @@ const cases=[
       assert.equal(await card('counter').textContent(),lastFrame);
       assert.equal(await card('mute').getAttribute('aria-pressed'),'true');
       await card('hero-play').click();
-      await page.waitForFunction(()=>window.__audio.at(-1).currentTime>0 && !window.__audio.at(-1).paused);
+      await page.waitForFunction(()=>{
+        const audio=window.__audio.at(-1);
+        if (audio?.error) throw Error('Demo playback error '+audio.error.code+': '+audio.error.message);
+        return audio && audio.currentTime>0 && !audio.paused;
+      });
       const visual=await page.locator('.diary-card').evaluate(el=>({
         animation:getComputedStyle(el.querySelector('[data-card=photo]')).animationName,
         paper:el.style.getPropertyValue('--day-paper'),motion:el.dataset.motion

@@ -4,11 +4,15 @@ permissions:
   contents: read
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        engine: [chromium, webkit]
+        include:
+          - engine: chromium
+            runner: ubuntu-latest
+          - engine: webkit
+            runner: macos-15
     env:
       ENGINE: ${{ matrix.engine }}
     steps:
