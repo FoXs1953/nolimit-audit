@@ -39,6 +39,14 @@ self.addEventListener('fetch', event => {
     const cache=await caches.open(CACHE);
     const cached=await cache.match(lookup);
     if(!cached)return fetch(request);
+    // The host redirects /index.html to /. Browsers reject a redirected
+    // Response for a navigation intercepted by a service worker.
+    if (request.mode==='navigate' && cached.redirected) {
+      const headers = new Headers(cached.headers);
+      headers.delete('content-encoding');
+      headers.delete('content-length');
+      return new Response(cached.body,{status:cached.status,statusText:cached.statusText,headers});
+    }
     const range=request.headers.get('Range');
     if(range && address.pathname.endsWith('.mp3'))return audioRange(range,await cached.arrayBuffer(),cached.headers.get('Content-Type') || 'audio/mpeg');
     return cached;
