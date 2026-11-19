@@ -116,6 +116,9 @@ async function journey(browser,dir,errors) {
     await page.goBack();await page.getByRole('dialog').waitFor({state:'hidden'});
     await by(main(page),/^Прочитать запись/,false).click();
     await page.getByRole('dialog').getByText(note,{exact:true}).waitFor();await closeSheet(page);
+    await gotoPage(page,'today');
+    await by(main(page),'Открыть мой день').waitFor();
+    assert.match(await page.locator('[data-cover]').getAttribute('src'),/^blob:/);
     await gotoPage(page,'archive');await search(page,'камышах');
     const found=by(main(page),new RegExp(firstDay),false);await found.waitFor();
     await search(page,'такой записи здесь нет');await by(main(page),'Сбросить поиск').click();await found.click();
@@ -148,6 +151,9 @@ async function journey(browser,dir,errors) {
     await by(main(page),/^Попробовать на копии/,false).click();await page.waitForURL(/#edit\//);
     await gotoPage(page,'archive');
     await by(main(page),/Солнце осталось в листьях/,false).waitFor();
+    await by(main(page),'Действия с черновиком').click();
+    await by(page.getByRole('dialog'),'Экспортировать день').waitFor();
+    await closeSheet(page);
     console.log(engine+' 390px: moment, reload, own text + photos + WAV, playback, search, edit, delete + restore, demo copy and ZIP OK');
     return zip;
   } finally {await ctx.close();}
