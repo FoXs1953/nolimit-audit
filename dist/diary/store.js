@@ -62,12 +62,12 @@ export async function listDays() {
 }
 export async function getDay(id) { return decodeDay(await read('get',id)); }
 
-async function write(fn, commit = true) {
+async function write(fn, commit = true, date) {
   const db = await connection();
   return new Promise((resolve,reject) => {
     const tx = db.transaction(STORE, commit ? 'readwrite' : 'readonly');
     const store = tx.objectStore(STORE);
-    const req = store.getAll();
+    const req = date ? store.index('date').getAll(date) : store.getAll();
     let result, err;
     req.onsuccess = () => {
       try { result = fn(new Map(req.result.map(row => [row.id,row])), store); }
@@ -262,26 +262,87 @@ function nextPrimary(date, rows, store) {
   next.primary=true;
   store.put(next);
 }
+function momentKey(moment) {
+  return moment.id || JSON.stringify([moment.time || '',moment.text]);
+}
+function mergeMoments(...lists) {
+  const unique=new Map();
+  for (const list of lists) {
+    for (const moment of list || []) {
+      const key=momentKey(moment);
+      if (!unique.has(key)) unique.set(key,moment);
+    }
+  }
+  return [...unique.values()].sort((a,b)=>(Date.parse(a.time) || 0)-(Date.parse(b.time) || 0));
+}
+// Earlier versions saved notes added to a completed postcard only in its pending edit.
+export function visibleDayNotes(day) {
+  return mergeMoments(day?.moments,day?.pendingEdit?.moments);
+}
+function attachMoments(day,moments) {
+  day.moments=moments;
+  if (day.pendingEdit) day.pendingEdit={...day.pendingEdit,moments};
+}
 export async function saveDay(input) {
   const normalized=normalizeRecord(input);
-  const [checksum,row]=await Promise.all([contentHash(normalized),encodeDay(normalized)]);
-  const saved=await write((rows,store)=>{
-    const current=rows.get(row.id);
-    const conflict=current && (current.revision || 0) !== (row.revision || 0);
-    if (conflict && current._contentHash===checksum) return current;
-    if (conflict) row.id=crypto.randomUUID();
-    const sameDate=Array.from(rows.values()).filter(other=>other.id!==row.id && other.date===row.date);
-    row.primary=!conflict && (current?.date===row.date ? current.primary : !sameDate.some(other=>other.primary));
-    if (!sameDate.length) row.primary=true;
-    row.revision=(conflict ? 0 : current?.revision || 0)+1;
-    row.updatedAt=new Date().toISOString();
-    row._contentHash=checksum;
-    store.put(row);
-    rows.set(row.id,row);
-    if (current && !conflict && current.date!==row.date && current.primary) nextPrimary(current.date,rows,store);
-    return row;
-  });
-  return decodeDay(saved);
+  attachMoments(normalized,visibleDayNotes(normalized));
+  // The editor can remain open while another tab appends a note. Include any
+  // new notes before hashing the revision, without treating them as competing edits.
+  for (;;) {
+    const [checksum,row]=await Promise.all([contentHash(normalized),encodeDay(normalized)]);
+    const result=await write((rows,store)=>{
+      const current=rows.get(row.id);
+      const existingNotes=visibleDayNotes(current);
+      const known=new Set(row.moments.map(momentKey));
+      if (existingNotes.some(note=>!known.has(momentKey(note)))) {
+        return {missing:existingNotes};
+      }
+      const conflict=current && (current.revision || 0) !== (row.revision || 0);
+      if (conflict && current._contentHash===checksum) return {stored:current};
+      if (conflict) row.id=crypto.randomUUID();
+      const sameDate=Array.from(rows.values()).filter(other=>other.id!==row.id && other.date===row.date);
+      row.primary=!conflict && (current?.date===row.date ? current.primary : !sameDate.some(other=>other.primary));
+      if (!sameDate.length) row.primary=true;
+      row.revision=(conflict ? 0 : current?.revision || 0)+1;
+      row.updatedAt=new Date().toISOString();
+      row._contentHash=checksum;
+      store.put(row);
+      rows.set(row.id,row);
+      if (current && !conflict && current.date!==row.date && current.primary) nextPrimary(current.date,rows,store);
+      return {stored:row};
+    });
+    if (result.stored) return decodeDay(result.stored);
+    attachMoments(normalized,mergeMoments(normalized.moments,result.missing));
+    safeTree(normalized);
+  }
+}
+export async function appendDayMoment(blank,moment) {
+  const seed=normalizeRecord(blank);
+  if (!validId(moment?.id) || typeof moment.text!=='string' || !moment.text.trim() ||
+      moment.text.length>1200 || !Number.isFinite(Date.parse(moment.time))) throw bad(t('invalidMoments'));
+  const primary=rows=>Array.from(rows.values()).find(day=>day.date===seed.date && day.primary!==false);
+  for (;;) {
+    const current=await write(rows=>primary(rows),false,seed.date);
+    const day=current ? decodeDay(current) : {...seed};
+    const notes=visibleDayNotes(day);
+    if(notes.some(note=>note.id===moment.id)) return day;
+    attachMoments(day,mergeMoments(notes,[moment]));
+    if(day.status==='draft' && !day.text?.trim()) day.text=moment.text;
+    safeTree(day);checkRecord(day);
+    const [hash,row]=await Promise.all([contentHash(day),encodeDay(day)]);
+    const saved=await write((rows,store)=>{
+      const latest=primary(rows);
+      if (latest?.id!==current?.id || latest?._contentHash!==current?._contentHash ||
+          latest?.revision!==current?.revision) return null;
+      // A note is additive. An open editor keeps its valid revision and saveDay
+      // merges the note with its next content change.
+      row.primary=true;row.revision=current?.revision || 1;
+      row.updatedAt=new Date().toISOString();row._contentHash=hash;
+      store.put(row);
+      return row;
+    },true,seed.date);
+    if(saved) return decodeDay(saved);
+  }
 }
 export async function removeDay(id) {
   return decodeDay(await write((rows,store)=>{

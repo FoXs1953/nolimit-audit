@@ -2,7 +2,8 @@ import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage} from './i18n.js';
 import {t} from './locales/views.js';
-import {dayRow, esc, formatDate, icon, localDate} from './ui.js';
+import {visibleDayNotes} from './store.js';
+import {noteList, esc, formatDate, icon, localDate} from './ui.js';
 
 let selectedBeforeLanguageChange;
 
@@ -18,6 +19,14 @@ export function mountHome(root, days, ctx) {
   const action = t(entry ? hasDraft ? 'continueEntry' : 'openToday' : 'writeDay');
   const recent = days.filter(day => day.status === 'ready' && day.primary !== false)
     .sort((a,b) => b.date.localeCompare(a.date))[0];
+  const recentPhoto = recent?.photos?.[0];
+  const recentUrl = recent?.id === entry?.id && recentPhoto === personalPhoto
+    ? personalUrl : recentPhoto?.blob ? URL.createObjectURL(recentPhoto.blob) : recentPhoto?.src;
+  const latestCard = recent ? '<button type="button" class="home-memory" data-action="recent" data-mood="'+postcardMood(recent)+'">'+
+    (recentUrl ? '<img src="'+esc(recentUrl)+'" alt="">' : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
+    '<span class="home-memory-copy"><time datetime="'+esc(recent.date)+'">'+esc(formatDate(recent.date))+'</time>'+
+    '<strong>'+esc(recent.title || recent.titleOverride || recent.text || t('dayEntry'))+'</strong></span>'+
+    icon('chevron',16)+'</button>' : '';
   root.innerHTML = '<div class="ab-view ab-audit diary-home">' +
     '<section class="ab-hero"><div class="ab-hero-copy"><div class="ab-meta"><span class="ab-record-mark" aria-hidden="true"></span>' +
     esc(formatDate(date,{weekday:'long',day:'numeric',month:'long'})) + '</div><h2>' +
@@ -27,75 +36,78 @@ export function mountHome(root, days, ctx) {
     '</button></div><div class="ab-art" aria-hidden="true"><div class="ab-slip-stack diary-print-stack">' +
     '<div class="ab-slip-back"></div><div class="ab-slip-mid"></div><div class="diary-print"><img data-cover alt=""><div><i></i><span data-cover-label></span></div></div></div></div></section>' +
     '<section class="ab-player"><div class="ab-player-head"><h2>'+t('collection')+'</h2><span class="ab-count" data-count></span></div>' +
-    '<button type="button" class="sample-title" data-open></button><label class="ab-scrub"><span class="ab-sr">'+t('chooseExample')+'</span>' +
-    '<input type="range" min="1" max="' + demos.length + '" value="1" data-slide></label>' +
-    '<div class="ab-player-actions"><div class="ab-transport"><button aria-label="'+t('previousPostcard')+'" data-prev>' + icon('prev',20) + '</button>' +
-    '<button class="ab-play" aria-label="'+t('listen')+'" data-play>' + icon('play',18) + '</button>' +
-    '<button aria-label="'+t('nextPostcard')+'" data-next>' + icon('next',20) + '</button></div>' +
-    '<button type="button" class="sample-link" data-example>'+t('openPostcard')+'</button></div></section>' +
-    '<section class="ab-evidence"><h2>'+t('myDay')+'</h2>' +
-    dayRow({title:t('captureMoment'),note:t('captureDetail'),action:'moment',symbol:'pen'}) +
-    dayRow({title:recent?.title || t('myArchive'),note:t(recent ? 'latestCard' : 'daysAndDrafts'),action:recent ? 'recent' : 'archive',symbol:'archive'}) +
+    '<div class="sample-picker"><label><span class="ab-sr">'+t('chooseExample')+'</span><select data-slide>' +
+    demos.map((day,i) => '<option value="'+i+'">'+esc(day.title)+'</option>').join('') + '</select>'+icon('chevron',16)+'</label>' +
+    '<div class="sample-paging"><button type="button" aria-label="'+t('previousPostcard')+'" title="'+t('previousPostcard')+'" data-prev>'+icon('chevron',17)+'</button>' +
+    '<button type="button" aria-label="'+t('nextPostcard')+'" title="'+t('nextPostcard')+'" data-next>'+icon('chevron',17)+'</button></div></div>' +
+    '<div class="sample-actions"><button type="button" class="sample-sound" data-play></button>' +
+    '<button type="button" class="sample-link" data-example>'+t('openPostcard')+icon('chevron',15)+'</button></div></section>' +
+    '<section class="ab-evidence home-personal"><header><h2>'+t('myDay')+'</h2>'+
+    (recent?'<button class="home-all-days" type="button" data-action="archive">'+t('allDays')+'</button>':'')+'</header>' +
+    '<button class="add-note" type="button" data-action="moment">'+icon('pen',19)+'<span>'+t('captureMoment')+'</span>'+icon('plus',16)+'</button>' +
+    noteList(visibleDayNotes(entry),true) +
+    latestCard +
     '</section></div>';
   let index = selectedBeforeLanguageChange ?? 0;
   selectedBeforeLanguageChange = undefined;
   let audio;
   const find = value => root.querySelector(value);
+  function soundButton(active) {
+    const symbol = active ? '<span class="sample-stop" aria-hidden="true"></span>' : icon('play',16);
+    find('[data-play]').innerHTML = symbol + '<span>'+t(active ? 'stopMusic' : 'listen')+'</span>';
+  }
   function stop() {
     if (audio) {
       audio.onended = null; audio.onerror = null;
       audio.pause(); audio.removeAttribute('src'); audio.load(); audio = null;
     }
-    find('[data-play]').innerHTML = icon('play',18);
-    find('[data-play]').setAttribute('aria-label',t('listen'));
+    soundButton(false);
   }
   function paint() {
     const day = demos[index];
     find('.ab-hero').dataset.mood = personalMood || postcardMood(day);
     find('[data-cover]').src = personalUrl || day.photos[0].src;
     find('[data-cover-label]').textContent = formatDate(personalUrl ? entry.date : day.date);
-    find('[data-open]').textContent = day.title;
     find('[data-count]').textContent = t('exampleCount',{position:index + 1,total:demos.length});
-    const slider = find('[data-slide]');
-    slider.value = index + 1;
-    slider.style.setProperty('--ab-fill', (index * 100 / Math.max(1,demos.length - 1)) + '%');
-    slider.setAttribute('aria-valuetext',day.title);
+    find('[data-slide]').value = index;
     find('[data-prev]').disabled = index === 0;
     find('[data-next]').disabled = index === demos.length - 1;
   }
   function select(i) { stop(); index = i; paint(); }
   find('[data-next]').onclick = () => select(Math.min(demos.length-1,index+1));
   find('[data-prev]').onclick = () => select(Math.max(0,index-1));
-  find('[data-slide]').oninput = event => select(Number(event.target.value) - 1);
-  find('[data-open]').onclick = find('[data-example]').onclick = () => ctx.viewDay(demos[index]);
+  find('[data-slide]').onchange = event => select(Number(event.target.value));
+  find('[data-example]').onclick = () => ctx.viewDay(demos[index]);
   find('[data-play]').onclick = async () => {
     if (audio) return stop();
     const sound = audio = new Audio(demos[index].music.src);
+    soundButton(true);
     sound.onended = stop;
     sound.onerror = () => {
       if (audio === sound) { stop(); ctx.toast(t('musicUnavailable')); }
     };
     try {
       await sound.play();
-      if (audio !== sound) return;
-      find('[data-play]').innerHTML = icon('pause',18);
-      find('[data-play]').setAttribute('aria-label',t('pause'));
     } catch { if (audio === sound) { stop(); ctx.toast(t('musicUnavailable')); } }
   };
   find('[data-today]').onclick = () => entry?.status === 'ready' && !hasDraft ? ctx.viewDay(entry) : ctx.edit(entry);
   find('[data-action="moment"]').onclick = () => {stop();ctx.quickMoment();};
   const last = find('[data-action="recent"]');
   if (last) last.onclick = () => ctx.viewDay(recent);
-  else find('[data-action="archive"]').onclick = () => ctx.go('archive');
+  const allDays = find('[data-action="archive"]');
+  if (allDays) allDays.onclick = () => ctx.go('archive');
   function onVisibility(){if(document.hidden)stop();}
   document.addEventListener('visibilitychange',onVisibility);
   const dialog = document.getElementById('sheet');
   const observer = new MutationObserver(() => {if(dialog.open)stop();});
   observer.observe(dialog,{attributes:true,attributeFilter:['open']});
+  soundButton(false);
   paint();
   return () => {
     if (getLanguage() !== language) selectedBeforeLanguageChange = index;
     stop(); observer.disconnect(); document.removeEventListener('visibilitychange',onVisibility);
-    if (personalUrl?.startsWith('blob:')) URL.revokeObjectURL(personalUrl);
+    for (const url of new Set([personalUrl,recentUrl])) {
+      if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
   };
 }

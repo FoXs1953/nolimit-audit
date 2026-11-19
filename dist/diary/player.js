@@ -1,6 +1,8 @@
 import {presentRecipe,storyLanguage} from './art.js';
 import {formatDate} from './i18n.js';
 import {musicLink} from './music-link.js';
+import {visibleDayNotes} from './store.js';
+import {noteList} from './ui.js';
 import {mountProvider} from './provider-player.js';
 import {playerText as t} from './locales/player.js';
 
@@ -44,6 +46,8 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   let trigger=null, scrollStyle='', utterance=null, closingHistory=false, expanded=false;
   const speech=env.speechSynthesis;
   speech?.getVoices();
+  const dayNotes=visibleDayNotes(day);
+  const notesSection=noteList(dayNotes);
   const sourceName=music.name || t('dayMusic');
   const story=String(day.text || recipe.caption || '').trim();
   // The first sentence often supplied the title. Offer the next detail on the page;
@@ -78,11 +82,11 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<span class="viewer-count" data-card="counter"></span><button type="button" class="viewer-control viewer-mute" data-card="mute"></button></div>'+
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
     '<p class="viewer-caption" lang="'+lang+'">'+esc(recipe.caption)+'</p>'+
-    '</div></div></dialog>'+
+    '</div>'+notesSection+'</div></dialog>'+
     '<section class="ab-evidence"><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
     (demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('options','more',t('options')))+
-    (demo ? action('credits','info',t('credits')) : '')+'</section></div>';
+    (demo ? action('credits','info',t('credits')) : '')+'</section>'+notesSection+'</div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
   frame.style.setProperty('--day-paper',recipe.color);
   frame.style.setProperty('--day-tilt',recipe.tilt+'deg');
@@ -264,7 +268,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   el('viewer-photo').onerror=()=>notice(t('imageUnavailable'));
   function show(title,markup,bind){pause();ctx.sheet(title,markup,bind);}
   el('read').addEventListener('click',()=>{
-    const notes=(day.moments || []).map(item=>'<li>'+esc(item.text)+'</li>').join('');
+    const notes=dayNotes.map(item=>'<li>'+esc(item.text)+'</li>').join('');
     const localVoice=()=>speech?.getVoices().find(v=>v.localService && v.lang.toLowerCase().split(/[-_]/)[0]===lang);
     show(t('datedEntry',{date:formatDate(day.date)}),'<div class="card-notes"><p class="card-original" lang="'+lang+'">'+esc(day.text)+'</p>'+
       (notes?'<section><h3>'+html('moments')+'</h3><ul>'+notes+'</ul></section>':'')+

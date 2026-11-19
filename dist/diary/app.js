@@ -1,5 +1,5 @@
 import {icon,esc,sheet,hidePanel,syncPanel,closeSheet,localDate,formatDate,toast,refreshNotice,forgetPanels} from './ui.js';
-import {getDay,listDays,makePrimary,removeDay,saveDay} from './store.js';
+import {appendDayMoment,getDay,listDays,makePrimary,removeDay,saveDay} from './store.js';
 import {mountEditor} from './editor.js';
 import {mountPlayer} from './player.js';
 import {demos,refreshDemos} from './demos.js';
@@ -12,7 +12,7 @@ import {t} from './locales/shell.js';
 
 const screens = {
   today:['today','todayShort','book','todayIntro'],
-  archive:['archive','archiveShort','archive','archiveIntro'],
+  archive:['archive','archiveShort','calendar','archiveIntro'],
   examples:['examples','examplesShort','layers','examplesIntro'],
   settings:['settings','settings','settings','settingsIntro']
 };
@@ -70,27 +70,22 @@ async function copyDemo(day){
   try {const saved=await saveDay(copy);await edit(saved);toast(t('copyReady'));}catch(error){downloadError(error);}
 }
 function quickMoment(){
+  const blank=fresh();
   sheet(t('quick'),'<form class="sheet-form" novalidate><label>'+t('prompt')+'<textarea class="day-field" rows="3" maxlength="1200" required placeholder="'+esc(t('hint'))+'"></textarea></label>'+
-    '<p class="sheet-help">'+esc(t('noteDate',{date:formatDate(localDate())}))+'</p>'+
+    '<p class="sheet-help">'+esc(t('noteDate',{date:formatDate(blank.date)}))+'</p>'+
     '<p role="alert" class="sheet-error" hidden></p><button class="primary" type="submit">'+t('addMoment')+'</button></form>',body=>{
       const form=body.querySelector('form'),field=form.querySelector('textarea'),btn=form.querySelector('button');
       field.focus({preventScroll:true});
+      let pendingNote;
       form.onsubmit=async event=>{
         event.preventDefault();
+        if(btn.disabled)return;
         const text=field.value.trim();
         if(!text){field.setCustomValidity(t('word'));field.reportValidity();field.oninput=()=>field.setCustomValidity('');return;}
         btn.disabled=true;
         try{
-          const record=await primaryToday() || fresh();
-          if (record.status==='ready' && !record.pendingEdit) {
-            record.pendingEdit = {...record,status:'draft'};
-            delete record.pendingEdit.revision;
-          }
-          const target=record.pendingEdit || record;
-          const moment={id:crypto.randomUUID(),text,time:new Date().toISOString()};
-          target.moments=[...(target.moments||[]),moment];
-          if(!target.text?.trim())target.text=text;
-          const saved=await saveDay(record);
+          if (pendingNote?.text!==text) pendingNote={id:crypto.randomUUID(),text,time:new Date().toISOString()};
+          const saved=await appendDayMoment(blank,pendingNote);
           drafts.set(saved.id,saved);
           await go('today',{refresh:true});
           toast(t('momentAdded'));
