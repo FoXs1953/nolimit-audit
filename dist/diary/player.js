@@ -71,6 +71,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
     (film?'<header class="film-heading"><h2 id="card-film-title">'+html('dayVideo')+'</h2></header>':'')+
     '<header class="viewer-header"><div><small>'+esc(date)+'</small><h2 id="card-viewer-title" lang="'+lang+'">'+esc(recipe.title)+'</h2></div>'+
+    (demo?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
     '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt=""></div></div>'+
     '<div class="viewer-details">'+
@@ -315,7 +316,9 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       photos.map(p=>'<section><h3>'+esc(p.name)+'</h3><p>'+esc(p.credit || '')+'</p>'+
         (webAddress(p.source)?'<a href="'+esc(webAddress(p.source))+'" target="_blank" rel="noopener noreferrer">'+html('photoSource')+'</a>':'')+'</section>').join('')+'</div>'));
   } else {
-    el('edit').addEventListener('click',()=>{pause();ctx.edit(day);});
+    const editDay=()=>{pause();ctx.edit(day);};
+    el('edit').addEventListener('click',editDay);
+    el('viewer-edit').addEventListener('click',editDay);
     el('options').addEventListener('click',()=>{pause();ctx.dayActions(day);});
   }
   document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();stopSpeech();}},opts);

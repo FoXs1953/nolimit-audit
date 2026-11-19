@@ -164,6 +164,7 @@ async function journey(browser,dir,errors) {
     await chooseFile(page,/^Восстановить из файла/,{name:'broken.zip',mimeType:'application/zip',buffer:Buffer.from([0,1,2,3])});
     await page.getByText(/Не удалось открыть ZIP-копию/).waitFor();
     await gotoPage(page,'examples');
+    assert.equal(await by(main(page),'Изменить день').count(),0);
     await by(main(page),/Солнце осталось в листьях/,false).click();
     await by(main(page),/^Авторы материалов/,false).click();await page.getByRole('dialog').getByRole('link').first().waitFor();await closeSheet(page);
     await by(main(page),/^Попробовать на копии/,false).click();await page.waitForURL(/#edit\//);
@@ -191,7 +192,7 @@ async function importOnCleanDevice(browser,zip,errors) {
     console.log(engine+' 820px: ZIP imported through UI, saved photos and sound available after reload');
   } finally { await ctx.close(); }
 }
-async function homeDeletion(browser,errors) {
+async function personalPreviews(browser,errors) {
   const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   try {
     const page=await ctx.newPage();logErrors(page,errors);
@@ -203,6 +204,7 @@ async function homeDeletion(browser,errors) {
     const latest='Вечером туман вернулся.';
     const noteRow=text=>home.locator('li').filter({has:page.getByText(text,{exact:true})});
     const dayRow=date=>home.locator('.home-memory-row').filter({has:page.locator('time[datetime="'+date+'"]')});
+    const preview=date=>main(page).getByRole('article').filter({has:page.locator('time[datetime="'+date+'"]')});
     const undo=by(page,'Вернуть');
     async function addNote(text) {
       await by(home,'Добавить заметку').tap();
@@ -237,16 +239,44 @@ async function homeDeletion(browser,errors) {
     await addNote(note);
     await by(main(page),'Продолжить запись').tap();
     const dateField=main(page).getByLabel('Дата',{exact:true});
+    const story=main(page).getByRole('textbox',{name:'Текст дня'});
+    async function editPreview(date,expectedText) {
+      await by(preview(date),'Изменить день').tap();
+      await page.waitForURL(/#edit\//);
+      assert.equal(await dateField.inputValue(),date);
+      assert.equal(await story.inputValue(),expectedText);
+      return new URL(page.url()).hash;
+    }
     const today=await dateField.inputValue();
     await dateField.fill(pastDate);
-    await main(page).getByRole('textbox',{name:'Текст дня'}).fill(firstDay+'.');
+    await story.fill(firstDay+'.');
     await chooseFile(page,'Добавить фото',path.join(media,'river.jpg'));
     await chooseFile(page,'Выбрать аудиофайл',makeTone());
     await saveCard(page);
+    const savedRoute=new URL(page.url()).hash;
     await gotoPage(page,'today');
     await dayRow(pastDate).getByText(firstDay,{exact:true}).waitFor();
     for(const text of [older,middle,latest]) await addNote(text);
     await dayRow(today).waitFor();await layout(page);
+
+    await by(dayRow(pastDate),new RegExp(firstDay),false).tap();
+    await page.waitForURL('**/'+savedRoute);
+    await gotoPage(page,'today');
+    const savedEdit=await editPreview(pastDate,firstDay+'.');
+    assert.equal(savedEdit,savedRoute.replace('#day/','#edit/'));
+    const updatedStory=firstDay+'. Вода потемнела.';
+    await story.fill(updatedStory);
+    await saveCard(page);
+    assert.equal(new URL(page.url()).hash,savedRoute);
+    await gotoPage(page,'today');
+    const draftEdit=await editPreview(today,older);
+    assert.notEqual(draftEdit,savedEdit);
+    await gotoPage(page,'archive');
+    await page.reload();
+    assert.equal(await editPreview(pastDate,updatedStory),savedEdit);
+    await gotoPage(page,'archive');
+    assert.equal(await editPreview(today,older),draftEdit);
+    await gotoPage(page,'today');
 
     await by(await showNote(middle),'Удалить заметку').tap();
     await undo.waitFor();
@@ -281,7 +311,7 @@ async function homeDeletion(browser,errors) {
     await gotoPage(page,'archive');
     await by(main(page),new RegExp(firstDay),false).waitFor();
     assert.equal(await main(page).locator('.personal-card').count(),1);
-    console.log(engine+' 390px touch: deleted a middle note, handled both day targets, verified cancel, undo and persistence');
+    console.log(engine+' 390px touch: edited the selected saved day and draft from both previews, verified saved changes, deletion and undo');
   } finally {await ctx.close();}
 }
 async function dimensions(browser,width,errors) {
@@ -307,7 +337,7 @@ async function dimensions(browser,width,errors) {
   try {
     const zip=await journey(browser,dir,errors);
     await importOnCleanDevice(browser,zip,errors);
-    await homeDeletion(browser,errors);
+    await personalPreviews(browser,errors);
     for (const width of [320,1360]) await dimensions(browser,width,errors);
     assert.deepEqual(errors,[]);
   } finally {await browser.close();await fs.rm(dir,{recursive:true,force:true});}
