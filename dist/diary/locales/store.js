@@ -27,7 +27,7 @@ export const messages = {
   invalidMoments: ["Некорректные заметки дня.", "Күннің қысқа жазбалары жарамсыз.", "Invalid notes for this day."],
   nestedVersions: ["Некорректная вложенность версий.", "Жазба нұсқаларының құрылымы жарамсыз.", "Invalid entry version structure."],
   unavailableFile: ["Один из файлов недоступен.", "Файлдардың бірі қолжетімсіз.", "One of the files is unavailable."],
-  sourceFile: ["Не удалось загрузить исходный файл. Откройте пример при подключённой сети.", "Бастапқы файл жүктелмеді. Мысалды интернетке қосылғанда ашыңыз.", "The original file could not be loaded. Open the example while online."],
+  sourceFile: ["Не удалось загрузить исходный файл. Проверьте подключение к интернету.", "Бастапқы файл жүктелмеді. Интернет байланысын тексеріңіз.", "The original file could not be loaded. Check your internet connection."],
   mediaUnavailable: ["Медиафайл недоступен.", "Медиафайл қолжетімсіз.", "The media file is unavailable."],
   alreadyDeleted: ["Запись уже удалена.", "Жазба жойылған.", "This entry has already been deleted."],
   draft: ["Черновик", "Нобай", "Draft"],

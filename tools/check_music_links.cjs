@@ -1,5 +1,6 @@
 // Stable provider boundary tests. External media and its availability are
 // controlled by each service; this test supplies only their documented events.
+const {personalDay,seedDay}=require('./personal-day-fixture.cjs');
 const assert=require('node:assert/strict');
 const {chromium,webkit}=require('playwright');
 const engine=process.env.ENGINE || 'chromium';
@@ -13,12 +14,8 @@ async function verifyVideoPostcard(page) {
       document.querySelector('button').onclick=()=>parent.postMessage('native-play',new URL(location.href).searchParams.get('origin'));
     </script>`
   }));
-  const id=await page.evaluate(async song=>{
-    const {demos}=await import('./diary/demos.js');
+  const id=await page.evaluate(async ({song,day})=>{
     const {saveDay}=await import('./diary/store.js');
-    const day=structuredClone(demos[0]);
-    day.id=crypto.randomUUID();
-    delete day.demo;
     day.photos=day.photos.slice(0,1);
     day.music={kind:'link',name:'Attached film',url:song};
     await saveDay(day);
@@ -44,12 +41,13 @@ async function verifyVideoPostcard(page) {
       destroy(){window.removeEventListener('message',this.receive);}
     }};
     return day.id;
-  },song);
+  },{song,day:personalDay()});
   await page.setViewportSize({width:1360,height:900});
   await page.goto(new URL('#day/'+id,base).href);
   const card=key=>page.locator('[data-card="'+key+'"]');
   const viewer=card('viewer'), iframe=card('provider').locator('iframe');
   await page.waitForFunction(()=>window.videoTrace.instances===1);
+  await page.getByRole('heading',{name:'Песня дня',exact:true}).waitFor();
   assert.equal(await iframe.isVisible(),true,'The attached video is visible on the day page');
   assert.equal(await iframe.count(),1);
   assert.equal(await viewer.evaluate(el=>el.matches(':modal')),false);
@@ -124,13 +122,7 @@ async function verifySpotifyStart(page) {
   });
   await page.route(service,route=>route.fulfill({contentType:'text/javascript',body:'('+fakeSdk.toString()+')()'}));
   const song='https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl';
-  const id=await page.evaluate(async song=>{
-    const {demos}=await import('./diary/demos.js');
-    const {saveDay}=await import('./diary/store.js');
-    const record={...structuredClone(demos[0]),id:crypto.randomUUID(),music:{kind:'link',name:'Spotify preview',url:song}};
-    delete record.demo;
-    await saveDay(record);return record.id;
-  },song);
+  const id=await seedDay(page,{music:{kind:'link',name:'Spotify preview',url:song}});
   await page.goto(new URL('#day/'+id,base).href);
   const card=k=>page.locator('[data-card="'+k+'"]');
   await page.waitForFunction(()=>typeof window.spotifyProgress==='function');

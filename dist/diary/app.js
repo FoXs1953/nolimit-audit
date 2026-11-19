@@ -2,7 +2,6 @@ import {icon,esc,sheet,hidePanel,syncPanel,closeSheet,localDate,formatDate,toast
 import {appendDayMoment,getDay,listDays,makePrimary,removeDay,removeDayNote,restoreDayNote,saveDay} from './store.js';
 import {mountEditor} from './editor.js';
 import {mountPlayer} from './player.js';
-import {demos,refreshDemos} from './demos.js';
 import {mountHome} from './home.js';
 import {mountLibrary} from './library.js';
 import {downloadDays,mountSettings} from './settings.js';
@@ -18,7 +17,6 @@ import {t} from './locales/shell.js';
 const screens = {
   today:['today','todayShort','book','todayIntro'],
   archive:['archive','archiveShort','calendar','archiveIntro'],
-  examples:['examples','examplesShort','layers','examplesIntro'],
   friends:['friends','friends','people','friendsSubtitle'],
   settings:['settings','settings','settings','settingsIntro']
 };
@@ -43,14 +41,11 @@ function backFromShared(){
   if(history.state?.friendOrigin){history.back();return;}
   go('friends');
 }
-const ctx = {theme:diaryTheme,backFromShared,openSharedAccess:id=>openAccess(ctx,{publicationId:id}),shareDay:day=>openAccess(ctx,{day}),icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
+const ctx = {theme:diaryTheme,backFromShared,openSharedAccess:id=>openAccess(ctx,{publicationId:id}),shareDay:day=>openAccess(ctx,{day}),icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
 function downloadError(error){toast(error?.message || t('actionError'));}
 function about(){
   sheet(t('about'),'<p><strong>NoLimit · '+t('journal')+'</strong></p><p>'+t('aboutIntro')+'</p><p>'+t('privacy')+'</p>'+
-    '<div class="grid-list"><button data-examples>'+icon('layers')+t('seeExamples')+'</button></div>'+
-    '<p><a href="https://github.com/FoXs1953/nolimit-audit" target="_blank" rel="noopener noreferrer">'+t('source')+'</a></p>',body=>{
-      body.querySelector('[data-examples]').onclick=()=>go('examples');
-    });
+    '<p><a href="https://github.com/FoXs1953/nolimit-audit" target="_blank" rel="noopener noreferrer">'+t('source')+'</a></p>');
 }
 function fresh(){
   return {id:crypto.randomUUID(),date:localDate(),contentLanguage:getLanguage(),status:'draft',text:'',title:'',caption:'',photos:[],music:null,moments:[]};
@@ -61,8 +56,7 @@ async function primaryToday(){
 }
 async function edit(day){
   try {
-    let entry=day || await primaryToday() || fresh();
-    if(demos.some(d=>d.id===entry.id))return copyDemo(entry);
+    const entry=day || await primaryToday() || fresh();
     drafts.set(entry.id,entry);
     return go('edit/'+encodeURIComponent(entry.id));
   } catch(error){downloadError(error);}
@@ -73,12 +67,6 @@ function followDraft(previousId,newId){
   history.replaceState(history.state,'','#'+route);
 }
 function viewDay(day){return go('day/'+encodeURIComponent(day.id));}
-async function copyDemo(day){
-  const copy=structuredClone(day);
-  delete copy.demo;delete copy.revision;delete copy.primary;
-  copy.id=crypto.randomUUID();copy.status='draft';
-  try {const saved=await saveDay(copy);await edit(saved);toast(t('copyReady'));}catch(error){downloadError(error);}
-}
 function quickMoment(){
   const blank=fresh();
   sheet(t('quick'),'<form class="sheet-form" novalidate><label>'+t('prompt')+'<textarea class="day-field" rows="3" maxlength="1200" required placeholder="'+esc(t('hint'))+'"></textarea></label>'+
@@ -221,7 +209,7 @@ async function render(key,focus,viewState) {
   route=key;
   const [section,encoded]=key.split('/');
   const root=document.createElement('div');root.className='view-enter';find('view').replaceChildren(root);
-  nav(section==='shared'?'friends':section==='edit'?'today':section==='day'?(encoded?.startsWith('demo-')?'examples':'archive'):section);
+  nav(section==='shared'?'friends':section==='edit'?'today':section==='day'?'archive':section);
   if(screens[section])heading(t(screens[section][0]),t(screens[section][3]));
   else heading(section==='edit'?t('write'):t('postcard'),'');
   if(focus){window.scrollTo({top:0,behavior:'instant'});find('main').focus({preventScroll:true});}
@@ -232,9 +220,12 @@ async function render(key,focus,viewState) {
       cleanup=mountSharedDay(root,decodeURIComponent(encoded),ctx,viewState);
     }else if(section==='day'||section==='edit'){
       const id=decodeURIComponent(encoded);
-      const sample=demos.find(day=>day.id===id);
-      const day=sample || await getDay(id) || drafts.get(id);
+      const day=await getDay(id) || drafts.get(id);
       if(ticket!==generation)return;
+      if(!day && /^demo-(?:leaves|launch|coffee|cat|moon)$/.test(id)){
+        history.replaceState({},'','#today');
+        return render('today',focus);
+      }
       if(!day){heading(t('missing'),t('missingHelp'));root.innerHTML='<button class="primary">'+t('openArchive')+'</button>';root.querySelector('button').onclick=()=>go('archive');return;}
       if(section==='edit'){
         heading(day.status==='ready'?t('edit'):t('write'),t('editorIntro'));
@@ -243,14 +234,12 @@ async function render(key,focus,viewState) {
         heading(t('postcard'),formatDate(day.date,{day:'numeric',month:'long',year:'numeric'}));
         cleanup=mountPlayer(root,day,ctx,viewState);
       }
-    }else if(section==='examples'){
-      cleanup=mountLibrary(root,[],true,ctx);
     }else{
       let days;
       try {days=await listDays();}catch(error){if(section!=='today')throw error;days=[];toast(error.message);}
       if(ticket!==generation)return;
       if(section==='today')cleanup=mountHome(root,days,ctx);
-      if(section==='archive')cleanup=mountLibrary(root,days,false,ctx);
+      if(section==='archive')cleanup=mountLibrary(root,days,ctx);
       if(section==='settings')cleanup=mountSettings(root,days,ctx);
     }
   }catch(error){
@@ -262,6 +251,7 @@ async function render(key,focus,viewState) {
 }
 function restoreLocation(){
   const key=parse(location.hash);
+  if(location.hash==='#examples')history.replaceState({},'','#'+key);
   if(key===route){syncPanel();return;}
   const ticket=++requestNumber;
   flushEditor().then(ok=>{
@@ -306,7 +296,6 @@ find('language-switch').onclick=async event=>{
   if(next===getLanguage() || !(await flushEditor()) || ticket!==requestNumber)return;
   const viewState=cleanup?.getViewState?.();
   setLanguage(next);
-  refreshDemos();
   localizeShell();
   refreshNotice();
   forgetPanels();
@@ -328,7 +317,7 @@ document.addEventListener('diarythemechange',refreshThemeToggle);
 themeToggle.onclick=()=>diaryTheme.setPreference(document.documentElement.dataset.theme==='dark'?'light':'dark');
 find('about').onclick=about;
 window.addEventListener('popstate',restoreLocation);
-window.addEventListener('hashchange',()=>{ if(parse(location.hash)!==route)restoreLocation(); });
+window.addEventListener('hashchange',()=>{ if(parse(location.hash)!==route || location.hash==='#examples')restoreLocation(); });
 const initial=parse(location.hash);
 history.replaceState(history.state?.friendOrigin && initial.startsWith('shared/') ? {friendOrigin:history.state.friendOrigin} : {},'','#'+initial);
 render(initial,false);

@@ -1,4 +1,5 @@
 // Run on a GitHub-hosted browser runner against the built Worker and ephemeral D1/R2.
+const {seedDay}=require('./personal-day-fixture.cjs');
 const assert = require('node:assert/strict');
 const { createHash, randomUUID } = require('node:crypto');
 const { readFile, readdir } = require('node:fs/promises');
@@ -450,9 +451,8 @@ async function journey(browser, site) {
   await auditControls(author.page, author.page.locator('.fh'), 'People');
   assert.deepEqual((await read(ilya, '/feed')).days, []);
 
-  await go(author, 'day/demo-leaves');
-  await author.page.locator('[data-card=copy]').click();
-  await author.page.locator('[data-ed-save]').click();
+  const personalId=await seedDay(author.page);
+  await go(author, 'day/'+personalId);
   await author.page.locator('[data-card=share]').click();
   await saveAccess(author, 'selected', [ilya.id], true);
   const mine = (await read(author, '/mine')).days;

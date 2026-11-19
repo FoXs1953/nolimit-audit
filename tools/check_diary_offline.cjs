@@ -1,4 +1,5 @@
 // Run against the static server or the production URL in a fresh browser profile.
+const {seedDay,title}=require('./personal-day-fixture.cjs');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const playwright = require('playwright');
@@ -38,24 +39,27 @@ async function interruptibleOrigin(upstream) {
     await page.goto(origin?.url || base);
     await page.getByRole('button',{name:'Записать день',exact:true}).waitFor();
     await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, {timeout:45000});
+    const id=await seedDay(page);
     if (origin) origin.disconnect();
     else await context.setOffline(true);
     await page.reload({waitUntil:'domcontentloaded'});
-    await page.getByRole('button',{name:'Записать день',exact:true}).waitFor();
-    await page.locator('#dock [data-route="examples"]').click();
-    await page.locator('[data-id="demo-leaves"]').click();
+    await page.locator('#dock [data-route="archive"]').click();
+    await page.locator('[data-id="'+id+'"]').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#view img')].some(img=>img.complete && img.naturalWidth));
     await page.getByRole('button',{name:'Қазақша',exact:true}).click();
-    await page.getByRole('heading',{name:'Күннің нұры жапырақта қалды',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Ашықхатты жандандыру',exact:true}).waitFor();
+    await page.getByRole('heading',{name:title,exact:true}).waitFor();
     await page.getByRole('button',{name:'English',exact:true}).click();
-    await page.getByRole('heading',{name:'Sunlight lingered in the leaves',exact:true}).waitFor();
+    await page.getByRole('button',{name:'Play postcard',exact:true}).waitFor();
+    await page.getByRole('heading',{name:title,exact:true}).waitFor();
     await page.reload({waitUntil:'domcontentloaded'});
-    await page.getByRole('heading',{name:'Sunlight lingered in the leaves',exact:true}).waitFor();
+    await page.getByRole('heading',{name:title,exact:true}).waitFor();
+    await page.getByRole('button',{name:'Play postcard',exact:true}).waitFor();
     const audio = await page.evaluate(async () => {
       const response = await fetch('./diary/media/leaves.mp3',{headers:{Range:'bytes=0-23'}});
       return [response.status, (await response.arrayBuffer()).byteLength,response.headers.get('content-range')];
     });
     assert.equal(audio[0],206);assert.equal(audio[1],24);assert.match(audio[2],/^bytes 0-23\//);
-    console.log(engine+': offline reload, demo navigation, photos and partial audio verified');
+    console.log(engine+': offline reload, saved-day navigation, photos and partial audio verified');
   } finally { origin?.close(); await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode=1; });

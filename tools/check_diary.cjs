@@ -32,7 +32,7 @@ async function gotoPage(page,section) {
   const mobile=page.getByRole('navigation',{name:'Основная навигация'});
   const nav=await mobile.isVisible()?mobile:page.getByRole('navigation',{name:'Разделы дневника'});
   const labels={
-    today:['Сегодня','Мой дневник'],archive:['Мои дни','Мои дни'],examples:['Примеры','Примеры дней'],settings:['Настройки','Настройки']
+    today:['Сегодня','Мой дневник'],archive:['Мои дни','Мои дни'],settings:['Настройки','Настройки']
   };
   await by(nav,labels[section][await mobile.isVisible()?0:1]).click();
   await page.waitForURL('**/#'+section);
@@ -165,17 +165,10 @@ async function journey(browser,dir,errors) {
     await by(duplicate,'Отмена').click();await page.getByRole('dialog').waitFor({state:'hidden'});
     await chooseFile(page,/^Восстановить из файла/,{name:'broken.zip',mimeType:'application/zip',buffer:Buffer.from([0,1,2,3])});
     await page.getByText(/Не удалось открыть ZIP-копию/).waitFor();
-    await gotoPage(page,'examples');
-    assert.equal(await by(main(page),'Изменить день').count(),0);
-    await by(main(page),/Солнце осталось в листьях/,false).click();
-    await by(main(page),/^Авторы материалов/,false).click();await page.getByRole('dialog').getByRole('link').first().waitFor();await closeSheet(page);
-    await by(main(page),/^Попробовать на копии/,false).click();await page.waitForURL(/#edit\//);
     await gotoPage(page,'archive');
-    await by(main(page),/Солнце осталось в листьях/,false).waitFor();
-    await by(main(page),'Действия с черновиком').click();
-    await by(page.getByRole('dialog'),'Экспортировать день').waitFor();
-    await closeSheet(page);
-    console.log(engine+' 390px: moment, reload, own text + photos + WAV, playback, search, edit, delete + restore, demo copy and ZIP OK');
+    await by(main(page),new RegExp(revised),false).waitFor();
+    assert.equal(await page.locator('[data-route="examples"],[data-example]').count(),0);
+    console.log(engine+' 390px: moment, reload, own text + photos + WAV, playback, search, edit, delete + restore and ZIP OK');
     return zip;
   } finally {await ctx.close();}
 }
@@ -445,13 +438,17 @@ async function dimensions(browser,width,errors) {
   const ctx=await browser.newContext({viewport:{width,height:900}});
   try {
     const page=await ctx.newPage();logErrors(page,errors);await ready(page);await layout(page);
-    await by(page,'Следующая открытка').click();await by(main(page),'Открыть открытку').click();
-    await by(main(page),'Оживить открытку').waitFor();await layout(page);
+    assert.equal(await page.locator('[data-route="examples"],[data-example],.sample-link').count(),0);
+    for (const legacy of ['#examples','#day/demo-leaves']) {
+      await page.goto(new URL(legacy,origin).href);
+      await page.getByRole('heading',{name:'Мой дневник',exact:true}).waitFor();
+      await by(main(page),'Записать день').waitFor();
+      assert.equal(await page.locator('[data-card=hero-play]').count(),0);
+    }
     await gotoPage(page,'archive');await page.getByText('Здесь будут твои дни',{exact:true}).waitFor();await layout(page);
     await by(main(page),'Записать день').click();await by(main(page),'Добавить фото и видео').waitFor();await layout(page);
     await gotoPage(page,'settings');await page.getByRole('switch').waitFor();await layout(page);
-    await gotoPage(page,'examples');await by(main(page),/Солнце осталось в листьях/,false).waitFor();await layout(page);
-    console.log(engine+' '+width+'px: home, collection, editor, archive and settings fit viewport');
+    console.log(engine+' '+width+'px: home, editor, archive and settings fit viewport');
   } finally {await ctx.close();}
 }
 (async()=>{

@@ -1,4 +1,5 @@
 // Run against a local or published diary. All changes live in a disposable browser profile.
+const {personalDay}=require('./personal-day-fixture.cjs');
 const { chromium, webkit } = require('playwright');
 const assert = require('node:assert/strict');
 
@@ -14,13 +15,9 @@ async function main() {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(origin.href);
-    const report = await page.evaluate(async base => {
+    const report = await page.evaluate(async ({base,day}) => {
       const db = await import(new URL('diary/store.js',base).href);
-      const { demos } = await import(new URL('diary/demos.js',base).href);
       function check(value, reason) { if (!value) throw new Error(reason); }
-      const day = structuredClone(demos[0]);
-      day.id = 'test-first';
-      delete day.demo;
       const saved = await db.saveDay(day);
       check(saved.revision===1 && saved.primary,'A new date must have one primary record');
       const concurrent = structuredClone(saved);
@@ -182,7 +179,7 @@ async function main() {
       await rejectsGallery([{...clip,blob:new Blob(['audio'],{type:'audio/webm'})}],'Audio WebM cannot fill a gallery slot');
       check((await db.getDay(videoDay.id)).revision===videoDay.revision,'Invalid attachments must leave the saved gallery intact');
       return 'versions, mixed photo/video galleries, media limits, audio, pending edits, backups, corruption, drafts, note deletion and undo, stale editors, concurrent note and story changes';
-    },origin.href);
+    },{base:origin.href,day:personalDay({id:'test-first'})});
     console.log(engine + ': ' + report + ' OK');
   } finally {
     await browser.close();

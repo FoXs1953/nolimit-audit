@@ -20,7 +20,7 @@ function webAddress(value) {
 
 export function mountPlayer(root,day,ctx,viewState={}) {
   const {esc,icon}=ctx, recipe=presentRecipe(day), photos=day.photos || [], music=day.music || {};
-  const lang=storyLanguage(day), date=formatDate(day.date), demo=day.id?.startsWith('demo-');
+  const lang=storyLanguage(day), date=formatDate(day.date);
   const hasVideos=photos.some(isGalleryVideo);
   const readOnly=ctx.readOnly===true;
   const own=new AbortController(), opts={signal:own.signal}, urls=new Map();
@@ -52,7 +52,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   speech?.getVoices();
   const dayNotes=visibleDayNotes(day);
   const notesSection=noteList(dayNotes);
-  const editableNotes=demo || readOnly ? notesSection : noteList(dayNotes,{dayId:day.id});
+  const editableNotes=readOnly ? notesSection : noteList(dayNotes,{dayId:day.id});
   const sourceName=music.name || t('dayMusic');
   const story=String(day.text || recipe.caption || '').trim();
   // The first sentence often supplied the title. Offer the next detail on the page;
@@ -74,9 +74,9 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     (film?'':'<section class="card-story" data-card="story"><h2>'+html('story')+'</h2><p lang="'+lang+'">'+esc(summary.slice(0,380))+(summary.length>380?'…':'')+'</p>'+
     '<button type="button" data-card="read">'+html('read')+icon('chevron',15)+'</button></section>')+
     '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
-    (film?'<header class="film-heading"><h2 id="card-film-title">'+html('dayVideo')+'</h2></header>':'')+
+    (film?'<header class="film-heading"><h2 id="card-film-title">'+html('daySong')+'</h2></header>':'')+
     '<header class="viewer-header"><div><small>'+esc(date)+'</small><h2 id="card-viewer-title" lang="'+lang+'">'+esc(recipe.title)+'</h2></div>'+
-    (demo || readOnly?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
+    (readOnly?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
     '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt="">'+
     (hasVideos?'<video data-card="viewer-video" controls playsinline preload="none" hidden></video>':'')+'</div></div>'+
@@ -93,8 +93,8 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '</div>'+notesSection+'</div></dialog>'+
     '<section class="ab-evidence"'+(readOnly && !film?' hidden':'')+'><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
-    (readOnly?'':demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('share','people',shareText('access'))+action('options','more',t('options')))+
-    (demo ? action('credits','info',t('credits')) : '')+'</section>'+editableNotes+'</div>';
+    (readOnly?'':action('edit','document',t('edit'))+action('share','people',shareText('access'))+action('options','more',t('options')))+
+    '</section>'+editableNotes+'</div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
   const clip=el('viewer-video');
   for(const button of frame.querySelectorAll('[data-delete-note]')){
@@ -342,20 +342,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       };
     });
   });
-  if (demo) {
-    const copyButton=el('copy');
-    copyButton.addEventListener('click',async()=>{
-      if(copyButton.disabled) return;
-      pause();copyButton.disabled=true;
-      try { await ctx.copyDemo(day); }
-      catch { notice(t('copyFailed')); }
-      finally { if(!destroyed) copyButton.disabled=false; }
-    });
-    el('credits').addEventListener('click',()=>show(t('credits'),'<div class="card-notes"><p>'+html('fictional')+'</p>'+
-      '<section><h3>'+html('music')+'</h3><p>'+esc(music.name)+' · '+esc(music.credit)+'</p></section>'+
-      photos.map(p=>'<section><h3>'+esc(p.name)+'</h3><p>'+esc(p.credit || '')+'</p>'+
-        (webAddress(p.source)?'<a href="'+esc(webAddress(p.source))+'" target="_blank" rel="noopener noreferrer">'+html('photoSource')+'</a>':'')+'</section>').join('')+'</div>'));
-  } else if (!readOnly) {
+  if (!readOnly) {
     el('share').onclick=()=>{pause();ctx.shareDay(day);};
     const editDay=()=>{pause();ctx.edit(day);};
     el('edit').addEventListener('click',editDay);
