@@ -147,6 +147,97 @@ async function checkInviteLifecycle(owner, first, second) {
   assert.equal((await api(first, '/invites/' + next.token)).status(), 410);
 }
 
+async function auditControls(page, scope, label) {
+  // Start in keyboard modality. Safari and Chromium then preserve it as focus moves.
+  await page.keyboard.press('Tab');
+  const controls = scope.locator('button:visible,a[href]:visible,input:not([type=hidden]):visible,select:visible,textarea:visible,summary:visible');
+  const count = await controls.count();
+  assert.ok(count > 0, label + ' has visible controls');
+  for (let i = 0; i < count; i++) {
+    const control = controls.nth(i);
+    const info = await control.evaluate(el => {
+      const tag = el.tagName.toLowerCase();
+      const role = el.getAttribute('role') || ({ button: 'button', a: 'link', select: 'combobox', textarea: 'textbox' })[tag] ||
+        (tag === 'input' ? ({ checkbox: 'checkbox', radio: 'radio', search: 'searchbox', range: 'slider' })[el.type] || 'textbox' : '');
+      return { role, tag, text: el.textContent.trim(), description: el.outerHTML.split('>')[0].slice(0, 160) };
+    });
+    const description = label + ' ' + info.description;
+    if (info.role) assert.equal(await control.and(page.getByRole(info.role, { name: /\S/ })).count(), 1, 'Accessible name for ' + description);
+    else assert.ok(info.tag === 'summary' && info.text, 'Disclosure label for ' + description);
+    if (await control.isDisabled()) continue;
+    await control.focus();
+    assert.ok(await control.evaluate(el => {
+      if (document.activeElement !== el || !el.matches(':focus-visible')) return false;
+      const hasOutline = node => {
+        const s = getComputedStyle(node);
+        return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1 &&
+          !['transparent', 'rgba(0, 0, 0, 0)'].includes(s.outlineColor);
+      };
+      return hasOutline(el) || (el.closest('label') && hasOutline(el.closest('label')));
+    }), 'Keyboard focus ring for ' + description);
+  }
+}
+
+async function clickWrite(actor, button, method, route) {
+  const [reply] = await Promise.all([
+    actor.page.waitForResponse(r => r.request().method() === method && new URL(r.url()).pathname === apiRoot + route),
+    button.click()
+  ]);
+  assert.equal(reply.status(), 200, method + ' ' + route + ': ' + await reply.text());
+}
+
+async function requestControls(author, visitor) {
+  await go(author, 'friends/people');
+  await author.page.locator('[data-act=profile]').click();
+  await author.page.locator('[data-act=edit-name]').click();
+  const form = author.page.locator('[data-name-form]');
+  const original = (await read(author, '/session')).user;
+  author.name += ' у реки';
+  await form.locator('[name=name]').fill(author.name);
+  await clickWrite(author, form.locator('[type=submit]'), 'POST', '/profile');
+  await author.page.locator('.fh-profile-name').getByText(author.name, { exact: true }).waitFor();
+  assert.deepEqual((await read(author, '/session')).user, { ...original, name: author.name });
+  await author.page.locator('[data-act=dismiss]').click();
+
+  await author.page.locator('.fh-toolbar [data-act=add]').click();
+  await author.page.locator('[data-act=create-invite]').click();
+  const link = author.page.locator('.fh-link-field input');
+  const invitation = await link.inputValue();
+  const token = new URL(invitation).hash.split('/').pop();
+  async function request() {
+    await go(visitor, 'friends/invite/' + token);
+    const send = visitor.page.locator('[data-act=send-request]');
+    await send.waitFor();
+    await auditControls(visitor.page, visitor.page.locator('.fh'), 'Invitation');
+    await send.click();
+    const cancel = visitor.page.locator('[data-act=cancel-request]');
+    await cancel.waitFor();
+    return cancel.getAttribute('data-id');
+  }
+  const canceled = await request();
+  await go(visitor, 'friends/people');
+  await clickWrite(visitor, visitor.page.locator('[data-act=cancel-request]'), 'DELETE', '/requests/' + canceled);
+  assert.deepEqual((await read(author, '/people')).incoming, []);
+
+  const declined = await request();
+  await go(author, 'friends/people');
+  await clickWrite(author, author.page.locator('[data-act=decline]'), 'DELETE', '/requests/' + declined);
+  assert.deepEqual((await read(visitor, '/people')).outgoing, []);
+
+  await request();
+  await go(author, 'friends/people');
+  await author.page.locator('.fh-toolbar [data-act=add]').click();
+  const revoke = author.page.locator('[data-act=revoke]');
+  await revoke.click();
+  await author.page.locator('.fh-actions [data-act=add]').click();
+  assert.equal((await read(author, '/people')).invite.token, token);
+  await revoke.click();
+  await clickWrite(author, author.page.locator('[data-act=confirm-revoke]'), 'DELETE', '/invites/current');
+  await author.page.locator('[data-act=create-invite]').waitFor();
+  assert.deepEqual((await read(visitor, '/people')).outgoing, []);
+  assert.equal((await api(visitor, '/invites/' + token)).status(), 410);
+}
+
 async function connect(owner, other) {
   await go(owner, 'friends/people');
   await owner.page.locator('.fh-toolbar [data-act=add]').click();
@@ -182,6 +273,7 @@ async function saveAccess(author, mode, selected, first) {
       assert.equal(await option.isChecked(), included);
     }
   }
+  if (first) await auditControls(author.page, author.page.locator('#sheet[open]'), 'Sharing dialog');
   const saved = author.page.waitForResponse(r => r.request().method() === (first ? 'PUT' : 'PATCH') &&
     new URL(r.url()).pathname.startsWith(apiRoot + '/publications/'));
   const gate = first ? author.site.holdNextWrite((method, pathname) =>
@@ -255,13 +347,14 @@ async function denied(actor, routes) {
   }
 }
 
-async function leaveComment(actor, text) {
+async function leaveComment(actor, text, audit = false) {
   const discussion = actor.page.locator('[data-discussion]');
   const input = discussion.locator('textarea[name=comment]');
   const send = discussion.locator('[data-send-comment]');
   await input.fill('  ');
   assert.ok(await send.isDisabled(), 'Blank comments cannot be submitted');
   await input.fill(text);
+  if (audit) await auditControls(actor.page, discussion, 'Discussion');
   await send.click();
   await discussion.getByText(text, { exact: true }).waitFor();
   assert.ok(await input.evaluate(el => el === document.activeElement));
@@ -301,8 +394,10 @@ async function journey(browser, site) {
   const lena = await person(browser, site, 'lena', 'Лена', 'kk', 390, errors);
   await keyboardNavigation(author);
   await checkInviteLifecycle(author, ilya, lena);
+  await requestControls(author, lena);
   await connect(author, ilya);
   await connect(author, lena);
+  await auditControls(author.page, author.page.locator('.fh'), 'People');
   assert.deepEqual((await read(ilya, '/feed')).days, []);
 
   await go(author, 'day/demo-leaves');
@@ -318,6 +413,16 @@ async function journey(browser, site) {
   const protectedPaths = [card, card + '/discussion', cover, audio];
   assert.deepEqual((await read(lena, '/feed')).days, []);
   await denied(lena, protectedPaths);
+
+  await go(ilya, 'friends/person/' + author.id);
+  const profileEntry = ilya.page.locator('.fh-day').filter({ hasText: mine[0].title });
+  await profileEntry.focus();
+  await profileEntry.press('Enter');
+  await ilya.page.locator('[data-discussion]').waitFor();
+  await ilya.page.locator('[data-shared-back]').click();
+  await ilya.page.waitForURL('**/#friends/person/' + author.id);
+  await profileEntry.waitFor();
+  await ilya.page.waitForFunction(fid => document.activeElement?.dataset.fid === fid, 'day:' + id);
 
   await go(ilya, 'friends');
   const entry = ilya.page.locator('.fh-day').filter({ hasText: mine[0].title });
@@ -338,7 +443,7 @@ async function journey(browser, site) {
   assert.match(bytes.headers()['cache-control'], /no-store/);
   for (const expected of [false, true]) await toggleWarmth(ilya, id, expected);
   const first = 'Тёплый день у реки.';
-  await leaveComment(ilya, first);
+  await leaveComment(ilya, first, true);
 
   await updateOnSecondDevice(browser, author, id, [ilya.id, lena.id], errors);
   await go(lena, 'friends');
