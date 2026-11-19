@@ -69,7 +69,7 @@ dialog.card-viewer::backdrop{background:#0d172cc7;backdrop-filter:blur(6px)}
 .viewer-header small,.viewer-music small,.viewer-count{color:#59657a;font-size:.8rem;font-variant-numeric:tabular-nums}
 .viewer-header h2{font-size:clamp(1.14rem,2.8vw,1.55rem);letter-spacing:-.035em;line-height:1.18;margin:3px 0 0;overflow-wrap:anywhere}
 .viewer-figure{display:grid;gap:9px;align-content:start;margin:0;min-width:0}
-.viewer-figure figcaption{color:#4b5669;font-size:.87rem;line-height:1.35;overflow-wrap:anywhere}
+.viewer-caption{margin:0;color:#4b5669;font-size:.87rem;line-height:1.35;overflow-wrap:anywhere}
 .viewer-photo-well{display:grid;place-items:center;align-self:start;width:100%;aspect-ratio:var(--photo-ratio,4/3);min-height:120px;max-height:min(51vh,460px);max-height:min(51dvh,460px);overflow:hidden;border:4px solid color-mix(in srgb,var(--day-paper),white 62%);border-radius:16px;background:color-mix(in srgb,var(--day-paper),white 92%);touch-action:pan-y}
 .viewer-photo-well img{display:block;object-fit:contain;width:100%;height:100%;min-height:0}
 .viewer-details{min-width:0;padding-top:13px}
@@ -86,25 +86,65 @@ dialog.card-viewer::backdrop{background:#0d172cc7;backdrop-filter:blur(6px)}
 .viewer-mute[aria-pressed=true]{position:relative;color:#7c8596}
 .viewer-mute[aria-pressed=true]:after{content:"";position:absolute;transform:rotate(-46deg);width:24px;height:2px;background:#525e73;box-shadow:0 1px 0 #e9edf3}
 .viewer-count{margin-inline-start:auto}
-.viewer-details .ab-scrub{min-height:32px}
-.viewer-details .ab-scrub input{height:32px;min-height:32px}
+.viewer-grid .ab-scrub{min-height:32px}
+.viewer-grid .ab-scrub input{height:32px;min-height:32px}
 .viewer-provider{overflow:hidden;border-radius:12px;max-width:100%;margin-top:8px}
 .viewer-status{margin:5px 0 0;color:#46536b;font-size:.86rem;line-height:1.35}
-.viewer-status:empty,.viewer-figure figcaption:empty{display:none}
+.viewer-status:empty,.viewer-caption:empty{display:none}
 .viewer-source{display:inline-flex;align-items:center;min-height:44px;color:#194cb5;font-weight:600;font-size:.9rem}
 .diary-card.is-playing:not(.is-still) .viewer-photo-well img{animation:day-float var(--day-duration) ease-in-out alternate infinite}
 .diary-card.is-playing:not(.is-still)[data-motion=lift] .viewer-photo-well img{animation-name:day-lift}
 .diary-card.is-playing:not(.is-still)[data-motion=pan] .viewer-photo-well img{animation-name:day-pan}
 .diary-card.is-playing:not(.is-still)[data-motion=cut] .viewer-photo-well img{animation-name:day-cut}
+/* A YouTube day uses one frame in the page and in the open postcard. */
+.viewer-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.viewer-details{padding:0}
+.viewer-controls,.viewer-caption,.viewer-provider,.viewer-grid .ab-scrub{min-width:0}
+.viewer-provider{margin:0}
+.viewer-grid .ab-scrub{margin:0}
+.viewer-caption{line-height:1.55}
+.viewer-caption:empty,.viewer-status:empty{display:none}
+dialog.card-film .film-heading{display:none}
+dialog.card-film[data-inline]{
+  position:static;inset:auto;margin:0;padding:clamp(20px,3vw,30px);animation:none;
+  width:100%;max-width:none;height:auto;max-height:none;min-width:0;
+  border:1px solid var(--ab-edge);border-radius:24px;background:white;box-shadow:none;overflow:visible
+}
+dialog.card-film[data-inline] .viewer-content{padding:0}
+dialog.card-film[data-inline] .film-heading{display:block;margin-bottom:14px}
+.diary-card:has(.card-film) .ab-evidence{height:auto}
+.film-heading h2{margin:0;font-size:clamp(1.1rem,2.1vw,1.35rem);line-height:1.25;letter-spacing:-.035em;font-weight:660}
+.card-film[data-inline] :is(.viewer-header,.viewer-figure,.viewer-controls,.ab-scrub,.viewer-caption){display:none}
+.card-film[data-inline] .viewer-grid{display:block}
+.card-film .viewer-details{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;align-content:start}
+.card-film .viewer-provider,.card-film .viewer-status{grid-column:1/-1}
+.card-film .viewer-provider{border-radius:12px;background:#15171c;min-height:200px}
+.card-film .viewer-music{padding:0;gap:0}
+.card-film .viewer-music-glyph{display:none}
+.card-film .viewer-music strong{font-size:.93rem;line-height:1.4;font-weight:600}
+.card-film .viewer-source{justify-self:end;font-size:.83rem;line-height:1.3;text-align:end}
+.card-film .viewer-status:not(:empty){order:2}
+.card-film .viewer-photo-well{border:0;background:#edeff3;border-radius:12px;aspect-ratio:16/9}
+.card-film .viewer-photo-well img{object-position:center!important}
+.diary-card.is-playing:not(.is-still) .card-film .viewer-photo-well img{animation-name:film-reveal;animation-iteration-count:1;animation-duration:.4s}
+@keyframes film-reveal{from{opacity:.78}to{opacity:1}}
 @media(min-width:760px){
-  .viewer-grid.has-provider{display:grid;grid-template-columns:minmax(0,1.36fr) minmax(240px,.84fr);gap:20px;align-items:start}
-  .viewer-grid.has-provider .viewer-details{padding:0}
+  .viewer-grid.has-provider{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;align-items:start}
+  .viewer-grid.has-provider .viewer-figure{grid-area:1/1}
+  .viewer-grid.has-provider .viewer-details{grid-column:2;grid-row:1/span 4}
+  .viewer-grid.has-provider :is(.viewer-controls,.ab-scrub,.viewer-caption){grid-column:1}
+  .card-film:not([data-inline]) .viewer-photo-well{min-height:200px;max-height:none}
 }
 @media(max-width:759px){
-  dialog.card-viewer,dialog.card-viewer:has(.has-provider){width:min(520px,calc(100% - 16px));max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);border-radius:20px}
-  .viewer-grid.has-provider .viewer-photo-well{max-height:clamp(132px,33dvh,300px)}
-  .viewer-grid.has-provider .viewer-figure figcaption{display:none}
-  .viewer-grid.has-provider .viewer-details{padding-top:8px}
+  dialog.card-viewer:not([data-inline]){width:min(560px,calc(100% - 16px));max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);border-radius:20px}
+  .viewer-grid.has-provider .viewer-photo-well{max-height:clamp(132px,30dvh,290px)}
+  .viewer-grid.has-provider .viewer-details{padding:0}
+  .card-film .viewer-details{column-gap:10px}
+  .card-film .viewer-caption{padding:2px 0 4px}
+}
+@media(max-width:440px){
+  dialog.card-film[data-inline]{padding:16px;border-radius:21px}
+  .card-film .viewer-music strong,.card-film .viewer-source{font-size:.83rem}
 }
 @media(max-width:440px){.card-story{border-radius:21px}}
 @media(prefers-reduced-motion:reduce){.diary-card .viewer-photo-well img{animation:none!important}}

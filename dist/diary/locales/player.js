@@ -13,6 +13,8 @@ export const playerText=translator({
   next:['Следующее фото','Келесі фото','Next photo'],
   sound:['Звук','Дыбыс','Sound'],
   music:['Музыка','Музыка','Music'],
+  dayVideo:['Видео дня','Күннің видеосы','Video of the day'],
+  openVideo:['Открыть в YouTube','YouTube-та ашу','Watch on YouTube'],
   dayMusic:['Музыка дня','Күннің әуені','Music for the day'],
   openSong:['Открыть песню','Әнді ашу','Open song'],
   folder:['Папка дня','Күн қалтасы','Day folder'],
