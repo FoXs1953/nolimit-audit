@@ -32,16 +32,19 @@
     dossier:['Досье','Первичные документы и проводки компании «Маяк».','folder','Досье'],
     period:['Граница месяца','Платёж на стыке двух отчётных периодов.','calendar'],
     pair:['Парный прогон','Один открытый эпизод в двух представлениях.','layers'],
-    reward:['Цена ошибки','Как повторный вывод меняет награду.','gauge']
+    reward:['Цена ошибки','Как повторный вывод меняет награду.','gauge'],
+    lab:['Прогоны среды','Открытые эпизоды, действия политик и результаты проверки.','calculator']
   };
-  const sources = {
-    'INV-017':{kind:'Счёт',amount:'480 000',date:'3 октября 2026',fields:[['Компания','Маяк'],['Валюта','KZT']]},
-    'PAY-041':{kind:'Платёж',amount:'180 000',date:'12 октября 2026',fields:[['Назначение','INV-017']]},
-    'PAY-042':{kind:'Платёж',amount:'300 000',date:'28 октября 2026',fields:[['Назначение','INV-017']]},
-    'L-101':{kind:'Проводка распределения',amount:'180 000',date:'12 октября 2026',fields:[['Платёж','PAY-041'],['Отнесено на счёт','INV-017']]},
-    'L-102':{kind:'Проводка распределения',amount:'280 000',date:'28 октября 2026',fields:[['Платёж','PAY-042'],['Отнесено на счёт','INV-017']]}
-  };
-  const A = window.A = {views:{},icon,go,doc, sheet, closeSheet:requestClose};
+  const release=window.AuditRelease;
+  const number = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
+  function money(minor){return number.format(minor/100);}
+  const sources=Object.fromEntries(Object.entries(release.demo.sources).map(([id,raw])=>{
+    const isInvoice='total_minor' in raw, isLedger='row_id' in raw;
+    const stamp=raw.issued_at||raw.timestamp;
+    const fields=isInvoice?[['Компания',release.demo.manifest.company],['Валюта',raw.currency]]:isLedger?[['Платёж',raw.payment_id],['Отнесено на счёт',raw.invoice_id]]:[['Назначение',raw.invoice_refs.join(', ')]];
+    return [id,{kind:isInvoice?'Счёт':isLedger?'Проводка распределения':'Платёж',amount:money(raw.total_minor??raw.amount_minor??raw.credit_minor),date:new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:release.demo.manifest.timezone}).format(new Date(stamp)),fields,raw}];
+  }));
+  const A = window.A = {views:{},icon,go,doc, sheet,money,release, closeSheet:requestClose};
   let current = '', cleanup, sheetTrigger, timer;
   const $ = id => document.getElementById(id);
   const dialog = $('sheet');
@@ -64,7 +67,7 @@
     showPanel(entry.panel);
   }
   function showPanel(panel) {
-    clearTimeout(timer);dialog.classList.remove('closing');
+    clearTimeout(timer);delete dialog.dataset.dismissing;dialog.classList.remove('closing');
     $('sheet-title').textContent=panel.title;$('sheet-body').innerHTML=panel.html;
     if (!dialog.open) {dialog.showModal();document.body.style.overflow='hidden';}
     dialog.querySelector('.sheet-box').scrollTop=0;$('sheet-close').focus({preventScroll:true});
@@ -72,11 +75,11 @@
   function hidePanel(immediate=false,restoreFocus=true) {
     if(!dialog.open) return;
     clearTimeout(timer);
-    const done=()=>{dialog.close();dialog.classList.remove('closing');document.body.style.overflow='';if(restoreFocus&&sheetTrigger?.isConnected)sheetTrigger.focus({preventScroll:true});sheetTrigger=null;};
+    const done=()=>{delete dialog.dataset.dismissing;dialog.close();dialog.classList.remove('closing');document.body.style.overflow='';if(restoreFocus&&sheetTrigger?.isConnected)sheetTrigger.focus({preventScroll:true});sheetTrigger=null;};
     if(immediate||matchMedia('(prefers-reduced-motion: reduce)').matches){done();return;}
     dialog.classList.add('closing');timer=setTimeout(done,150);
   }
-  function requestClose(){if(!dialog.open||dialog.classList.contains('closing'))return;if(history.state?.panel)history.back();else hidePanel();}
+  function requestClose(){if(!dialog.open||dialog.dataset.dismissing==='1'||dialog.classList.contains('closing'))return;dialog.dataset.dismissing='1';if(history.state?.panel)history.back();else hidePanel();}
   function getRoute(){const slug=location.hash.slice(1);return Object.hasOwn(screens,slug)?slug:'audit';}
   function go(key){
     if(!Object.hasOwn(screens,key))return;
@@ -130,12 +133,15 @@
     $('dock').innerHTML=Object.entries(screens).slice(0,3).map(([key,s])=>'<button type="button" data-screen="'+key+'">'+icon(s[2],19)+'<span>'+s[3]+'</span></button>').join('')+'<button type="button" id="more" aria-haspopup="dialog">'+icon('more',19)+'Ещё</button>';
     document.querySelector('.ctx-icon').innerHTML=icon('building',19);document.querySelector('.about-icon').innerHTML=icon('info',18);$('sheet-close').innerHTML=icon('close',18);
     document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.dataset.screen)go(button.dataset.screen);else if(button.dataset.source)doc(button.dataset.source);});
+    document.querySelector('.skip').addEventListener('click', event => {event.preventDefault();$('main').focus();});
     bindSheetGesture();
     $('sheet-body').addEventListener('click',event=>{
       if(!event.target.closest('[data-compare-sources]'))return;
-      sheet('Платёж и проводка','<div class="source-id">INV-017</div><div class="source-sum">20 000 ₸</div><p>Эта часть платежа осталась нераспределённой.</p><dl class="source-fields"><div><dt>PAY-042 · поступило</dt><dd>300 000 ₸</dd></div><div><dt>L-102 · отнесено</dt><dd>280 000 ₸</dd></div></dl>');
+      const receipt=sources['PAY-042'].raw, ledger=sources['L-102'].raw;
+      sheet('Платёж и проводка','<div class="source-id">'+ledger.invoice_id+'</div><div class="source-sum">'+money(receipt.amount_minor-ledger.credit_minor)+' ₸</div><p>Эта часть платежа осталась нераспределённой.</p><dl class="source-fields"><div><dt>'+receipt.payment_id+' · поступило</dt><dd>'+money(receipt.amount_minor)+' ₸</dd></div><div><dt>'+ledger.row_id+' · отнесено</dt><dd>'+money(ledger.credit_minor)+' ₸</dd></div></dl>');
     });
-    $('more').addEventListener('click',menu);$('about').addEventListener('click',()=>sheet('О демо','<p><strong>NoLimit Audit</strong> — интерактивные макеты для трека FinTech хакатона GENESIS.EXE.</p><p>Компания «Маяк», платежи, документы и результаты здесь вымышлены. Вы просматриваете подготовленный пример. Официальная RL-среда и закрытая проверка запускаются отдельно.</p>'));
+    $('more').addEventListener('click',menu);
+    $('about').addEventListener('click',()=>sheet('О среде','<p><strong>NoLimit Audit</strong> — воспроизводимая RL-среда для финансового аудита. На сайте доступны наблюдения и итоги записанных запусков Python-среды.</p><p>Компания «Маяк» и все записи синтетические. Проверку можно повторить локально без сети.</p><div class="grid-list"><button data-screen="lab">Открыть прогоны и материалы</button></div>'));
     $('sheet-close').addEventListener('click',requestClose);dialog.addEventListener('cancel',event=>{event.preventDefault();requestClose();});
     dialog.addEventListener('click',event=>{if(event.target===dialog)requestClose();});
     window.addEventListener('popstate',()=>{const key=getRoute();if(key!==current){hidePanel(true,false);render(key,true);}if(history.state?.panel)showPanel(history.state.panel);else hidePanel();});

@@ -1,17 +1,23 @@
 (() => {
   const A = window.A;
+  const {demo, period} = window.AuditRelease;
+  const visible = Object.values(demo.sources);
+  const money = (minor, currency) => new Intl.NumberFormat('ru-RU', {
+    style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 2
+  }).format(minor / 100);
+  const byId = (a,b) => a[0].localeCompare(b[0]);
+  function folder(id, label, icon, rows) {
+    const word = id === 'ledger' ? ['запись','записи','записей'] : ['документ','документа','документов'];
+    const count = new Intl.PluralRules('ru').select(rows.length);
+    return {id, label, icon, records: rows.sort(byId), count: rows.length + ' ' + word[count === 'one' ? 0 : count === 'few' ? 1 : 2]};
+  }
   const folders = [
-    { id: 'invoices', label: 'Счета', count: '1 документ', records: [
-      ['INV-017', 'Счёт к оплате', '480 000', 'document']
-    ] },
-    { id: 'payments', label: 'Платежи', count: '2 документа', records: [
-      ['PAY-041', 'Первый платёж', '180 000', 'wallet'],
-      ['PAY-042', 'Второй платёж', '300 000', 'wallet']
-    ] },
-    { id: 'ledger', label: 'Проводки', count: '2 записи', records: [
-      ['L-101', 'Распределение первого платежа', '180 000', 'ledger'],
-      ['L-102', 'Распределение второго платежа', '280 000', 'ledger']
-    ] }
+    folder('invoices', 'Счета', 'document', visible.filter(r => 'total_minor' in r)
+      .map(r => [r.doc_id, 'Счёт к оплате', money(r.total_minor, r.currency), 'document'])),
+    folder('payments', 'Платежи', 'wallet', visible.filter(r => 'amount_minor' in r && r.doc_id)
+      .map(r => [r.doc_id, 'Платёж по счёту ' + r.invoice_refs.join(', '), money(r.amount_minor, r.currency), 'wallet'])),
+    folder('ledger', 'Проводки', 'ledger', visible.filter(r => r.account === 'receivable' && r.payment_id)
+      .map(r => [r.row_id, 'Распределение ' + r.payment_id, money(r.credit_minor, r.currency), 'ledger']))
   ];
   let selectedFolder = 'payments';
   let displayLocal = true;
@@ -27,7 +33,7 @@
     return '<button type="button" class="dp-folder dp-' + folder.id + '" data-folder="' + folder.id + '" aria-pressed="false" aria-controls="dp-documents">' +
       '<span class="dp-folder-art" aria-hidden="true"><i class="dp-folder-back"></i><i class="dp-slip dp-slip-one"></i>' +
       '<i class="dp-slip dp-slip-two"><b></b><b></b><b></b></i><i class="dp-folder-front">' +
-      A.icon(folder.records[0][3], 22) + '</i></span><span class="dp-folder-name">' + folder.label +
+      A.icon(folder.icon, 22) + '</i></span><span class="dp-folder-name">' + folder.label +
       '</span><span class="dp-folder-count">' + folder.count + '</span></button>';
   }
 
@@ -48,44 +54,69 @@
       root.querySelector('.dp-heading h2').textContent = folder.label;
       root.querySelector('.dp-heading > span').textContent = folder.count;
       const list = root.querySelector('.dp-records');
-      list.innerHTML = folder.records.map(record => entry(record[3], record[0], record[1], record[2] + '&nbsp;₸',
+      list.innerHTML = folder.records.map(record => entry(record[3], record[0], record[1], record[2],
         'data-record="' + record[0] + '"')).join('');
       list.querySelectorAll('[data-record]').forEach(button => {
         button.addEventListener('click', () => A.doc(button.dataset.record));
       });
     }
     root.querySelectorAll('[data-folder]').forEach(button => button.addEventListener('click', () => showFolder(button.dataset.folder)));
-    root.querySelector('[data-finding]').addEventListener('click', () => A.sheet('Вывод агента',
-      '<div class="dp-sheet-body"><p>К счёту INV-017 отнесли только часть второго платежа.</p><dl>' +
-      '<div><dt>Поступило · PAY-042</dt><dd>300 000 ₸</dd></div><div><dt>Распределено · L-102</dt><dd>280 000 ₸</dd></div>' +
-      '<div><dt>Разница</dt><dd>20 000 ₸</dd></div></dl><p class="dp-note">Оба источника доступны в папках «Платежи» и «Проводки».</p></div>'));
+    root.querySelector('[data-finding]').addEventListener('click', () => {
+      const claim = demo.findings[0];
+      const sources = claim.evidence_ids.map(id => {
+        const record = demo.sources[id];
+        const minor = record.total_minor ?? record.amount_minor ?? record.credit_minor ?? record.debit_minor;
+        return '<div class="linkrow"><dt><button class="secondary" type="button" data-source="' + id + '">' +
+          id + '</button></dt><dd>' + money(minor, record.currency) + '</dd></div>';
+      }).join('');
+      A.sheet('Вывод агента', '<div class="dp-sheet-body"><p>' + claim.explanation + '</p><dl>' +
+        sources + '<div><dt>Расхождение</dt><dd>' + money(claim.claimed_amount_minor, claim.currency) + '</dd></div></dl></div>');
+    });
     showFolder(selectedFolder);
   };
 
+  const zoneName = period.timezone;
+  const paid = new Date(period.payment.timestamp);
+  const posted = new Date(period.cash.timestamp);
+  const cutoff = new Date(period.period_end);
+  const hour = 3600000;
+  const axisStart = Math.floor(Math.min(+paid,+posted,+cutoff)/hour)*hour;
+  const axisEnd = Math.ceil(Math.max(+paid,+posted,+cutoff)/hour)*hour;
   const timeEvents = [
-    { id: 'L-208', label: 'Проводка', local: '31 окт · 23:50', utc: '31 окт · 18:50',
-      localStamp: '2026-10-31T23:50:00+05:00', utcStamp: '2026-10-31T18:50:00Z', icon: 'ledger' },
-    { id: 'PAY-088', label: 'Платёж', local: '01 ноя · 02:15', utc: '31 окт · 21:15',
-      localStamp: '2026-11-01T02:15:00+05:00', utcStamp: '2026-10-31T21:15:00Z', icon: 'wallet' }
+    {id:period.cash.row_id, label:'Проводка', stamp:period.cash.timestamp, icon:'ledger'},
+    {id:period.payment.doc_id, label:'Платёж', stamp:period.payment.timestamp, icon:'wallet'}
   ];
-
+  const formatter = (date, timeZone, opts) => new Intl.DateTimeFormat('ru-RU', {timeZone,...opts}).format(date);
+  function hhmm(date, zone) {
+    return formatter(date, zone, {hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+  }
+  function dayTime(date, zone) {
+    return formatter(date,zone,{day:'2-digit',month:'short'}).replaceAll('.','')+' · '+hhmm(date,zone);
+  }
+  function parts(date,zone) {
+    return Object.fromEntries(new Intl.DateTimeFormat('ru-RU',{timeZone:zone,day:'2-digit',month:'long',
+      weekday:'long',timeZoneName:'longOffset',hour:'2-digit',minute:'2-digit',hourCycle:'h23'})
+      .formatToParts(date).map(part=>[part.type,part.value]));
+  }
+  const offset = (display) => display.timeZoneName.replace(/^GMT|^UTC/, 'UTC').replace(/^UTC$/, 'UTC+00:00');
   function periodRecord(id) {
     const item = timeEvents.find(record => record.id === id);
-    A.sheet(item.label + ' ' + item.id, '<div class="dp-sheet-body"><p>Фрагмент записи из учебного эпизода о границе периода.</p>' +
-      '<dl><div><dt>Время компании</dt><dd>' + item.local + '</dd></div><div><dt>Время UTC</dt><dd>' + item.utc + '</dd></div></dl>' +
-      '<p class="dp-note">Исходная отметка времени</p><code>' + item.localStamp + '</code></div>');
+    const stamp = new Date(item.stamp);
+    A.sheet(item.label + ' ' + item.id, '<div class="dp-sheet-body"><p>Запись открытого эпизода о границе периода.</p>' +
+      '<dl><div><dt>Время компании</dt><dd>' + dayTime(stamp,zoneName) + '</dd></div><div><dt>Время UTC</dt><dd>' + dayTime(stamp,'UTC') + '</dd></div></dl>' +
+      '<p class="dp-note">Исходная отметка времени</p><code>' + item.stamp + '</code></div>');
   }
 
   A.views.period = function (root) {
     root.innerHTML = '<div class="dp-view dp-period"><section class="dp-calendar">' +
       '<div class="dp-calendar-top"><span class="dp-time-label">' + A.icon('calendar', 17) + ' Дата платежа</span>' +
-      '<span class="dp-case-mark">PAY-088</span></div>' +
+      '<span class="dp-case-mark">' + period.payment.doc_id + '</span></div>' +
       '<div class="dp-date-face"><div><div class="dp-date-line"><strong data-day></strong><span data-month></span></div>' +
       '<p data-zone></p></div><div class="dp-time-display"><div class="dp-clock" aria-hidden="true">' +
       '<i class="dp-hour-hand"></i><i class="dp-minute-hand"></i></div><b data-hour></b></div></div>' +
       '<div class="dp-segment" role="group" aria-label="Часовой пояс"><i aria-hidden="true"></i>' +
       '<button type="button" data-local="1">Время компании</button><button type="button" data-local="0">UTC</button></div>' +
-      '</section><section class="dp-panel dp-chronology"><div class="dp-heading"><h2>Граница октября</h2></div>' +
+      '</section><section class="dp-panel dp-chronology"><div class="dp-heading"><h2>Закрытие периода</h2></div>' +
       '<div class="dp-timescale" role="img"><span class="dp-axis-bg"></span><i class="dp-market"></i><i class="dp-posted"></i><i class="dp-paid"></i>' +
       '<span class="dp-scale-start" data-start></span><span class="dp-scale-end" data-end></span><span class="dp-boundary" data-boundary></span></div>' +
       '<div class="dp-time-records"></div></section>' +
@@ -94,37 +125,46 @@
       '<span class="dp-evidence-open" aria-hidden="true">' + A.icon('chevron', 18) + '</span></button></div>';
 
     function showTime() {
-      const mode = displayLocal ? 'local' : 'utc';
+      const zone = displayLocal ? zoneName : 'UTC';
+      const face = parts(paid,zone);
       const update = (selector, text) => { root.querySelector(selector).textContent = text; };
-      update('[data-day]', displayLocal ? '01' : '31');
-      update('[data-month]', displayLocal ? 'ноября' : 'октября');
-      update('[data-zone]', displayLocal ? 'Воскресенье · UTC+05:00' : 'Суббота · UTC+00:00');
-      update('[data-hour]', displayLocal ? '02:15' : '21:15');
-      update('[data-start]', displayLocal ? '23:00' : '18:00');
-      update('[data-end]', displayLocal ? '03:00' : '22:00');
-      update('[data-boundary]', displayLocal ? '00:00 · Закрытие' : '19:00 · Закрытие');
-      root.querySelector('.dp-timescale').setAttribute('aria-label', displayLocal ?
-        'Проводка в 23:50, закрытие месяца в 00:00, платёж в 02:15 местного времени.' :
-        'Проводка в 18:50, закрытие месяца в 19:00, платёж в 21:15 UTC.');
-      root.querySelector('.dp-clock').style.setProperty('--hour-angle', displayLocal ? '67.5deg' : '277.5deg');
+      update('[data-day]', face.day);
+      update('[data-month]', face.month);
+      update('[data-zone]', face.weekday[0].toUpperCase()+face.weekday.slice(1)+' · '+offset(face));
+      update('[data-hour]', hhmm(paid,zone));
+      update('[data-start]', hhmm(axisStart,zone));
+      update('[data-end]', hhmm(axisEnd,zone));
+      update('[data-boundary]', hhmm(cutoff,zone)+' · Закрытие');
+      for (const [selector,date] of [['.dp-posted',posted],['.dp-market',cutoff],['.dp-boundary',cutoff],['.dp-paid',paid]]) {
+        root.querySelector(selector).style.left = 100*(date-axisStart)/(axisEnd-axisStart)+'%';
+      }
+      root.querySelector('.dp-timescale').setAttribute('aria-label',
+        'Проводка '+dayTime(posted,zone)+', закрытие '+dayTime(cutoff,zone)+', платёж '+dayTime(paid,zone));
+      root.querySelector('.dp-clock').style.setProperty('--hour-angle', ((Number(face.hour)%12)*30+Number(face.minute)*.5)+'deg');
+      root.querySelector('.dp-minute-hand').style.transform = 'rotate('+Number(face.minute)*6+'deg)';
       const segment = root.querySelector('.dp-segment');
       segment.classList.toggle('dp-utc-active', !displayLocal);
       segment.querySelectorAll('button').forEach(button => {
         button.setAttribute('aria-pressed', String((button.dataset.local === '1') === displayLocal));
       });
       const list = root.querySelector('.dp-time-records');
-      list.innerHTML = timeEvents.map(event => entry(event.icon, event.label, event.id, event[mode],
+      list.innerHTML = timeEvents.map(event => entry(event.icon, event.label, event.id, dayTime(new Date(event.stamp), zone),
         'data-period-record="' + event.id + '"')).join('');
       list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => periodRecord(button.dataset.periodRecord)));
     }
     root.querySelectorAll('[data-local]').forEach(button => {
       button.addEventListener('click', () => { displayLocal = button.dataset.local === '1'; showTime(); });
     });
-    root.querySelector('[data-policy]').addEventListener('click', () => A.sheet('Правило периода',
-      '<div class="dp-sheet-body"><p>Платёж признаётся на дату поступления по местному времени компании.</p><dl>' +
-      '<div><dt>Часовой пояс</dt><dd>UTC+05:00</dd></div><div><dt>Начало ноября</dt><dd>01 ноя · 00:00</dd></div>' +
-      '<div><dt>Та же граница в UTC</dt><dd>31 окт · 19:00</dd></div></dl>' +
-      '<p>PAY-088 поступил через 2 часа 15 минут после закрытия октября. По политике компании этот платёж относится к ноябрю.</p></div>'));
+    root.querySelector('[data-policy]').addEventListener('click', () => {
+      const local = parts(paid,zoneName);
+      const policyText = '<p>Платёж признаётся по местной дате поступления. Начало периода включительно, конец — исключительно.</p>';
+      const recognized = formatter(paid,zoneName,{month:'long',year:'numeric'});
+      A.sheet('Правило периода', '<div class="dp-sheet-body">'+policyText+'<dl>' +
+        '<div><dt>Часовой пояс</dt><dd>'+offset(local)+'</dd></div><div><dt>Конец периода</dt><dd>'+
+        dayTime(cutoff,zoneName)+'</dd></div><div><dt>Та же граница в UTC</dt><dd>'+dayTime(cutoff,'UTC')+'</dd></div></dl>'+
+        '<p>'+period.payment.doc_id+' по дате поступления относится к периоду «'+recognized+'».</p>'+
+        '<details><summary>Исходное правило из policy.json</summary><p>'+period.policy.period+'</p></details></div>');
+    });
     showTime();
   };
 })();

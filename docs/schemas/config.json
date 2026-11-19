@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/config.json",
+  "type": "object",
+  "properties": {
+    "issues": {
+      "type": "object",
+      "properties": {
+        "duplicate_invoice": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "payment_allocation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "fx_conversion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "period_cutoff": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "scenario": {
+      "enum": [
+        "mixed",
+        "clean",
+        "fx_period",
+        "allocation_period"
+      ]
+    },
+    "invoice_count": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 72
+    },
+    "period": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+    },
+    "timezone": {
+      "type": "string",
+      "pattern": "^(UTC|Etc/GMT[+-][0-9]{1,2})$"
+    },
+    "base_currency": {
+      "enum": [
+        "KZT",
+        "USD",
+        "EUR",
+        "JPY"
+      ]
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/step.json",
+  "$defs": {
+    "observation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "oneOf": [
+                {
+                  "$ref": "records.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "records.json"
+                      },
+                      "maxItems": 50
+                    },
+                    "next_cursor": {
+                      "oneOf": [
+                        {
+                          "$ref": "common.json#/$defs/id"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "records",
+                    "next_cursor"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "submitted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "submitted"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "reason": {
+                      "enum": [
+                        "time_limit",
+                        "step_limit",
+                        "peer_closed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "remaining_steps": {
+              "$ref": "common.json#/$defs/budget"
+            }
+          },
+          "required": [
+            "result",
+            "remaining_steps"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "type": "string"
+            },
+            "remaining_steps": {
+              "$ref": "common.json#/$defs/budget"
+            }
+          },
+          "required": [
+            "error",
+            "remaining_steps"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/observation"
+        },
+        {
+          "$ref": "common.json#/$defs/reward"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      ],
+      "items": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/observation"
+        },
+        "reward": {
+          "$ref": "common.json#/$defs/reward"
+        },
+        "terminated": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "info": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "observation",
+        "reward",
+        "terminated",
+        "truncated",
+        "info"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/reset.json",
+  "$defs": {
+    "initial": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "manifest.json"
+        },
+        "policy": {
+          "$ref": "policy.json"
+        },
+        "remaining_steps": {
+          "$ref": "common.json#/$defs/budget"
+        }
+      },
+      "required": [
+        "task",
+        "manifest",
+        "policy",
+        "remaining_steps"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/initial"
+        },
+        {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      ],
+      "items": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/initial"
+        },
+        "info": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "observation",
+        "info"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
