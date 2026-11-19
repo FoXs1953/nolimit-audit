@@ -136,7 +136,9 @@ async function journey(browser,dir,errors) {
 
     await gotoPage(page,'archive');
     await search(page,lateNote);
-    await page.locator('.personal-card .day-note-excerpt').filter({hasText:lateNote}).waitFor();
+    const matchingDay=page.locator('.personal-card').filter({hasText:firstDay});
+    await matchingDay.locator('.day-mood-tag').waitFor();
+    assert.ok(!(await matchingDay.innerText()).includes(lateNote), 'Notes remain searchable without appearing on previews');
     await search(page,'камышах');
     const found=by(main(page),new RegExp(firstDay),false);await found.waitFor();
     await search(page,'такой записи здесь нет');await by(main(page),'Сбросить поиск').click();await found.click();

@@ -22,6 +22,7 @@ export const t = translator({
   allDays: ['Все мои дни', 'Барлық күндерім', 'All my days'],
   exampleCount: ['{position} из {total}', '{position} / {total}', '{position} of {total}'],
   musicUnavailable: ['Музыка не загрузилась. Попробуй ещё раз.', 'Музыка жүктелмеді. Қайталап көр.', 'The music couldn’t load. Try again.'],
+  galleryMood: ['Настроение · {mood}', 'Көңіл күй · {mood}', 'Mood · {mood}'],
   dayEntry: ['Запись дня', 'Күн жазбасы', 'Day entry'],
   versions: ['Версии дня', 'Күннің нұсқалары', 'Day versions'],
   primaryVersion: ['Основная версия', 'Негізгі нұсқа', 'Main version'],

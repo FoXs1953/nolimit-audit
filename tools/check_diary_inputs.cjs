@@ -131,6 +131,10 @@ async function saveAndReadCard(page) {
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, 'The entire card fits the viewport');
       assert.ok(await galleryCard.getByRole('button', {name:'Изменить день', exact:true}).isVisible());
     }
+    for (const [lang, expected] of [['en','Mood · Angry'],['kk','Көңіл күй · Ашулы'],['ru','Настроение · Злое']]) {
+      await page.locator('[data-language="'+lang+'"]').click();
+      await galleryCard.getByText(expected, {exact:true}).waitFor();
+    }
     assert.deepEqual(errors, []);
     console.log(engine + ': text changed motion ' + first.motion + ' → ' + second.motion +
       ', cover changed colour ' + first.color + ' → ' + second.color +

@@ -183,6 +183,7 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
 .paper-cover time span{font-size:.88rem}
 .day-card-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 8px 16px}
 .day-card-copy{display:grid;min-width:0;gap:6px}
+.day-mood-tag{font-size:.875rem;font-weight:550;line-height:1.3;overflow-wrap:anywhere}
 .day-card-copy strong{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:1.12rem;line-height:1.22;letter-spacing:-.025em}
 .day-track{min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem}
 .day-track svg{vertical-align:-2px;margin-inline-end:6px}
@@ -220,5 +221,3 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
 .latest-note:not(:has(details[open]))>ul p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .diary-card>.day-notes{grid-column:1/-1}
 .card-film[data-inline] .day-notes{display:none}
-.day-note-excerpt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:.88rem;line-height:1.4}
-.day-note-excerpt svg{vertical-align:-2px;margin-inline-end:6px}
