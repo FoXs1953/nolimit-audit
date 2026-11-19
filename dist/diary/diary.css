@@ -131,7 +131,11 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
 .home-all-days:hover{text-decoration:underline}
 .home-day{margin:14px 0 6px;border:1px solid #e4e7ed;border-radius:16px;background:#f8f9fb}
 .home-memory-row{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;gap:4px;padding-inline-end:6px}
-.home-memory{width:100%;display:grid;grid-template-columns:clamp(44px,22%,86px) minmax(0,1fr) 16px;align-items:center;gap:clamp(6px,1.3vw,14px);padding:8px;border-radius:15px;text-align:start;color:#1a2231}
+.home-memory{grid-column:1/-1;width:100%;display:grid;grid-template-columns:clamp(44px,22%,86px) minmax(0,1fr) 16px;align-items:center;gap:clamp(6px,1.3vw,14px);padding:8px;border-radius:15px;text-align:start;color:#1a2231}
+.day-edit{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:7px 10px;border-radius:10px;color:#174cba;font-size:.9rem;font-weight:600;line-height:1.25;text-align:start}
+.day-edit svg{flex:none}
+.day-edit:is(:hover,:focus-visible){background:#eaf0ff}
+.home-memory-row .day-edit{justify-self:start;margin-inline-start:5px}
 .home-memory:is(:hover,:focus-visible){background:#f1f4fa}
 .home-memory>img,.home-memory-mark{width:100%;height:clamp(48px,9vw,74px);object-fit:cover;border-radius:10px}
 .home-memory-mark{display:grid;place-items:center;color:#375bb0;background:#e4ebfa}

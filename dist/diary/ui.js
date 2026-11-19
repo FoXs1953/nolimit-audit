@@ -49,6 +49,11 @@ export function localDate() {
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 }
 
+export function editDayButton(id, descriptionId) {
+  return '<button type="button" class="day-edit" data-edit-day="'+esc(id)+'" aria-describedby="'+esc(descriptionId)+'">'+
+    icon('pen',16)+'<span>'+esc(t('edit'))+'</span></button>';
+}
+
 export function noteList(notes, {dayId, layout='full'}={}) {
   if (!notes.length) return '';
   const formatter=new Intl.DateTimeFormat(getLocale(),{hour:'2-digit',minute:'2-digit'});

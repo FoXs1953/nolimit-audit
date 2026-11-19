@@ -3,7 +3,7 @@ import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage, getLocale} from './i18n.js';
 import {t} from './locales/views.js';
-import {esc, formatDate, icon} from './ui.js';
+import {editDayButton, esc, formatDate, icon} from './ui.js';
 
 let filtersBeforeLanguageChange;
 
@@ -56,6 +56,7 @@ export function mountLibrary(root, records, examples, ctx) {
   }
   function personalCard(day) {
     const image = photo(day);
+    const descriptionId='gallery-day-'+day.id;
     const draft = day.status !== 'ready';
     const note = visibleDayNotes(day).at(-1);
     const copies = variants.get(day.date).length;
@@ -67,14 +68,13 @@ export function mountLibrary(root, records, examples, ctx) {
       '<time datetime="'+esc(day.date)+'" aria-label="'+dateLabel+'"><b>'+esc(formatDate(day.date,{day:'numeric'}))+'</b>'+
       '<span>'+esc(formatDate(day.date,{weekday:'long'}))+'</span></time>'+
       (draft?'<span class="day-draft">'+icon('pen',13)+t('draft')+'</span>':'')+'</span>'+
-      '<span class="day-card-footer"><span class="day-card-copy"><strong>'+esc(label(day))+'</strong>'+
+      '<span class="day-card-footer"><span class="day-card-copy"><strong id="'+esc(descriptionId)+'">'+esc(label(day))+'</strong>'+
       (note && note.text!==label(day)?'<span class="day-note-excerpt">'+icon('pen',14)+'<span class="ab-sr">'+t('noteLabel')+' </span>'+esc(note.text)+'</span>':'')+
       (day.music?.name?'<span class="day-track">'+icon('music',15)+esc(day.music.name)+'</span>':'')+
       '</span><span class="day-open-icon">'+icon('chevron',16)+'</span></span></button>'+
-      (draft || copies>1?'<div class="day-card-actions">'+
+      '<div class="day-card-actions">'+editDayButton(day.id,descriptionId)+
         (draft?'<button type="button" class="versions-link" data-draft="'+esc(day.id)+'">'+t('draftActions')+'</button>':'')+
-        (copies>1?'<button type="button" class="versions-link" data-versions="'+esc(day.date)+'">'+t('versions')+' · '+copies+'</button>':'')+'</div>':'')+
-      '</article>';
+        (copies>1?'<button type="button" class="versions-link" data-versions="'+esc(day.date)+'">'+t('versions')+' · '+copies+'</button>':'')+'</div></article>';
   }
   function personalMonths(entries) {
     const months = new Map();
@@ -118,9 +118,10 @@ export function mountLibrary(root, records, examples, ctx) {
     }).join('');
   }
   grid.onclick = event => {
-    const button = event.target.closest('[data-id],[data-versions],[data-draft]');
+    const button = event.target.closest('[data-id],[data-versions],[data-draft],[data-edit-day]');
     if(!button)return;
-    if(button.dataset.versions)showVersions(button.dataset.versions);
+    if(button.dataset.editDay)ctx.edit(filtered.find(day=>day.id===button.dataset.editDay));
+    else if(button.dataset.versions)showVersions(button.dataset.versions);
     else if(button.dataset.draft)ctx.dayActions(filtered.find(day=>day.id===button.dataset.draft));
     else open(filtered.find(day=>day.id===button.dataset.id));
   };
