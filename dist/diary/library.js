@@ -1,5 +1,6 @@
 import {visibleDayNotes} from './store.js';
 import {postcardMood} from './art.js';
+import {artText} from './locales/art.js';
 import {demos} from './demos.js';
 import {getLanguage,getLocale,translator} from './i18n.js';
 import {archivePublicationLinks,syncArchivePublications} from './social-api.js';
@@ -14,7 +15,7 @@ function terms(value) {
 }
 function label(day) {
   return day.title || day.titleOverride || day.text?.trim().split(/\s+/).slice(0,7).join(' ') ||
-    day.moments?.[0]?.text || t('dayEntry');
+    t('dayEntry');
 }
 const badgeText=translator({
   last:['Последние данные: {mode}','Соңғы дерек: {mode}','Last confirmed: {mode}'],
@@ -99,18 +100,17 @@ export function mountLibrary(root, records, examples, ctx) {
       ? ' style="--cover-pigment:'+pigment+'"' : '';
     const descriptionId='gallery-day-'+day.id;
     const draft = day.status !== 'ready';
-    const note = visibleDayNotes(day).at(-1);
+    const mood = postcardMood(day);
     const copies = variants.get(day.date).length;
     const dateLabel = esc(formatDate(day.date,{weekday:'long',day:'numeric',month:'long',year:'numeric'}));
-    return '<article class="personal-card" data-mood="'+postcardMood(day)+'"'+coverStyle+'>'+
+    return '<article class="personal-card" data-mood="'+mood+'"'+coverStyle+'>'+
       '<button type="button" class="personal-open" data-id="'+esc(day.id)+'">'+
       '<span class="day-cover'+(image?'':' paper-cover')+'">'+
       (image?'<img src="'+esc(image)+'" loading="lazy" alt="">':'')+
       '<time datetime="'+esc(day.date)+'" aria-label="'+dateLabel+'"><b>'+esc(formatDate(day.date,{day:'numeric'}))+'</b>'+
       '<span>'+esc(formatDate(day.date,{weekday:'long'}))+'</span></time>'+
       (draft?'<span class="day-draft">'+icon('pen',13)+t('draft')+'</span>':'')+'</span>'+
-      '<span class="day-card-footer"><span class="day-card-copy"><strong id="'+esc(descriptionId)+'">'+esc(label(day))+'</strong>'+
-      (note && note.text!==label(day)?'<span class="day-note-excerpt">'+icon('pen',14)+'<span class="ab-sr">'+t('noteLabel')+' </span>'+esc(note.text)+'</span>':'')+
+      '<span class="day-card-footer"><span class="day-card-copy"><span class="day-mood-tag">'+esc(t('galleryMood',{mood:artText(mood)}))+'</span><strong id="'+esc(descriptionId)+'">'+esc(label(day))+'</strong>'+
       (day.music?.name?'<span class="day-track">'+icon('music',15)+esc(day.music.name)+'</span>':'')+
       '<span class="day-visibility" data-visibility="'+esc(day.id)+'"></span></span><span class="day-open-icon">'+icon('chevron',16)+'</span></span></button>'+
       '<div class="day-card-actions">'+editDayButton(day.id,descriptionId)+
