@@ -1,6 +1,7 @@
 import {postcardMood} from './art.js';
 import {demos} from './demos.js';
 import {getLanguage} from './i18n.js';
+import {t as shellText} from './locales/shell.js';
 import {t} from './locales/views.js';
 import {visibleDayNotes} from './store.js';
 import {noteList, esc, formatDate, icon, localDate} from './ui.js';
@@ -22,11 +23,26 @@ export function mountHome(root, days, ctx) {
   const recentPhoto = recent?.photos?.[0];
   const recentUrl = recent?.id === entry?.id && recentPhoto === personalPhoto
     ? personalUrl : recentPhoto?.blob ? URL.createObjectURL(recentPhoto.blob) : recentPhoto?.src;
-  const latestCard = recent ? '<button type="button" class="home-memory" data-action="recent" data-mood="'+postcardMood(recent)+'">'+
-    (recentUrl ? '<img src="'+esc(recentUrl)+'" alt="">' : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
-    '<span class="home-memory-copy"><time datetime="'+esc(recent.date)+'">'+esc(formatDate(recent.date))+'</time>'+
-    '<strong>'+esc(recent.title || recent.titleOverride || recent.text || t('dayEntry'))+'</strong></span>'+
-    icon('chevron',16)+'</button>' : '';
+  const previews = new Map();
+  for (const day of [entry,recent]) {
+    if (day && !previews.has(day.id)) previews.set(day.id,{day,notes:visibleDayNotes(day)});
+  }
+  function dayPreview({day,notes}) {
+    const isRecent = day.id === recent?.id;
+    const photo = isRecent ? recentUrl : personalUrl;
+    const date = esc(formatDate(day.date,{day:'numeric',month:'long',year:'numeric'}));
+    const name = esc(day.title || day.titleOverride || day.text || t('dayEntry'));
+    const label = esc(shellText('delete'));
+    const descriptionId = 'home-day-'+esc(day.id);
+    return '<article class="home-day" data-home-day="'+esc(day.id)+'"><div class="home-memory-row">'+
+      '<button type="button" class="home-memory" data-action="'+(isRecent?'recent':'today-entry')+'" data-mood="'+postcardMood(day)+'">'+
+      (photo ? '<img src="'+esc(photo)+'" alt="">' : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
+      '<span class="home-memory-copy" id="'+descriptionId+'"><small><time datetime="'+esc(day.date)+'">'+date+'</time>'+
+      (day.status==='draft'?' · '+t('draft'):'')+'</small> <strong>'+name+'</strong></span>'+icon('chevron',16)+'</button>'+
+      '<button type="button" class="diary-delete" data-delete-day="'+esc(day.id)+'" aria-label="'+label+'" title="'+label+
+      '" aria-describedby="'+descriptionId+'">'+icon('trash',18)+'</button></div>'+
+      noteList(notes,{dayId:day.id,layout:day.id===entry?.id?'latest':'collapsed'})+'</article>';
+  }
   root.innerHTML = '<div class="ab-view ab-audit diary-home">' +
     '<section class="ab-hero"><div class="ab-hero-copy"><div class="ab-meta"><span class="ab-record-mark" aria-hidden="true"></span>' +
     esc(formatDate(date,{weekday:'long',day:'numeric',month:'long'})) + '</div><h2>' +
@@ -43,10 +59,9 @@ export function mountHome(root, days, ctx) {
     '<div class="sample-actions"><button type="button" class="sample-sound" data-play></button>' +
     '<button type="button" class="sample-link" data-example>'+t('openPostcard')+icon('chevron',15)+'</button></div></section>' +
     '<section class="ab-evidence home-personal"><header><h2>'+t('myDay')+'</h2>'+
-    (recent?'<button class="home-all-days" type="button" data-action="archive">'+t('allDays')+'</button>':'')+'</header>' +
+    (days.length?'<button class="home-all-days" type="button" data-action="archive">'+t('allDays')+'</button>':'')+'</header>' +
     '<button class="add-note" type="button" data-action="moment">'+icon('pen',19)+'<span>'+t('captureMoment')+'</span>'+icon('plus',16)+'</button>' +
-    noteList(visibleDayNotes(entry),true) +
-    latestCard +
+    Array.from(previews.values(),dayPreview).join('') +
     '</section></div>';
   let index = selectedBeforeLanguageChange ?? 0;
   selectedBeforeLanguageChange = undefined;
@@ -92,8 +107,19 @@ export function mountHome(root, days, ctx) {
   };
   find('[data-today]').onclick = () => entry?.status === 'ready' && !hasDraft ? ctx.viewDay(entry) : ctx.edit(entry);
   find('[data-action="moment"]').onclick = () => {stop();ctx.quickMoment();};
-  const last = find('[data-action="recent"]');
-  if (last) last.onclick = () => ctx.viewDay(recent);
+  for (const article of root.querySelectorAll('[data-home-day]')) {
+    const {day,notes} = previews.get(article.dataset.homeDay);
+    article.querySelector('.home-memory').onclick = () => day.status==='ready' ? ctx.viewDay(day) : ctx.edit(day);
+    article.onclick = async event => {
+      const button = event.target.closest('[data-delete-day],[data-delete-note]');
+      if (!button || button.disabled) return;
+      const pending = button.hasAttribute('data-delete-day') ? ctx.deleteDayFromHome(day) : ctx.deleteNote(day,notes[Number(button.dataset.deleteNote)]);
+      button.disabled = true;
+      try {
+        await pending;
+      } finally { button.disabled = false; }
+    };
+  }
   const allDays = find('[data-action="archive"]');
   if (allDays) allDays.onclick = () => ctx.go('archive');
   function onVisibility(){if(document.hidden)stop();}

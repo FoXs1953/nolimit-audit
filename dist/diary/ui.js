@@ -49,17 +49,26 @@ export function localDate() {
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 }
 
-export function noteList(notes, latestOnly=false) {
+export function noteList(notes, {dayId, layout='full'}={}) {
   if (!notes.length) return '';
-  const displayed=latestOnly ? notes.slice(-1) : notes;
   const formatter=new Intl.DateTimeFormat(getLocale(),{hour:'2-digit',minute:'2-digit'});
-  return '<section class="day-notes'+(latestOnly?' latest-note':'')+'"><h3>'+t(latestOnly?'latestNote':'savedNotes')+
-    '</h3><ul>'+displayed.map(note=>{
-      const stamp=note.time ? new Date(note.time) : null;
-      const time=stamp && Number.isFinite(stamp.valueOf()) ?
-        '<time datetime="'+stamp.toISOString()+'">'+esc(formatter.format(stamp))+'</time>' : '';
-      return '<li>'+time+'<p>'+esc(note.text)+'</p></li>';
-    }).join('')+'</ul></section>';
+  const owner=dayId ? ' data-notes-day="'+esc(dayId)+'"' : '';
+  const deleteLabel=dayId ? esc(t('deleteNote')) : '';
+  const rows=notes.map((note,index)=>{
+    const stamp=note.time ? new Date(note.time) : null;
+    const time=stamp && Number.isFinite(stamp.valueOf()) ?
+      '<time datetime="'+stamp.toISOString()+'">'+esc(formatter.format(stamp))+'</time>' : '';
+    const id='note-'+esc(dayId)+'-'+index;
+    const remove=dayId ? '<button type="button" class="diary-delete" data-delete-note="'+index+'" aria-label="'+deleteLabel+
+      '" title="'+deleteLabel+'" aria-describedby="'+id+'">'+icon('trash',17)+'</button>' : '';
+    return '<li>'+time+'<p'+(dayId?' id="'+id+'"':'')+'>'+esc(note.text)+'</p>'+remove+'</li>';
+  });
+  const latest=layout==='latest' ? rows.pop() : '';
+  if (layout==='full') return '<section class="day-notes"'+owner+'><h3>'+t('savedNotes')+'</h3><ul>'+rows.join('')+'</ul></section>';
+  const more=rows.length ? '<details class="note-disclosure"'+owner+'><summary>'+esc(t('showAllNotes',{count:notes.length}))+
+    '</summary><ul>'+rows.reverse().join('')+'</ul></details>' : '';
+  if (!latest) return '<div class="day-notes home-note-group"'+owner+'>'+more+'</div>';
+  return '<section class="day-notes home-note-group latest-note"'+owner+'><h3>'+t('latestNote')+'</h3><ul>'+latest+'</ul>'+more+'</section>';
 }
 
 export function dayRow({title, note, symbol, action, trailing='', image=''}) {

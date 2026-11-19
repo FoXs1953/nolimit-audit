@@ -48,6 +48,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   speech?.getVoices();
   const dayNotes=visibleDayNotes(day);
   const notesSection=noteList(dayNotes);
+  const editableNotes=demo ? notesSection : noteList(dayNotes,{dayId:day.id});
   const sourceName=music.name || t('dayMusic');
   const story=String(day.text || recipe.caption || '').trim();
   // The first sentence often supplied the title. Offer the next detail on the page;
@@ -86,8 +87,16 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<section class="ab-evidence"><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
     (demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('options','more',t('options')))+
-    (demo ? action('credits','info',t('credits')) : '')+'</section>'+notesSection+'</div>';
+    (demo ? action('credits','info',t('credits')) : '')+'</section>'+editableNotes+'</div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
+  for(const button of frame.querySelectorAll('[data-delete-note]')){
+    button.onclick=async()=>{
+      if(button.disabled)return;
+      button.disabled=true;
+      try {await ctx.deleteNote(day,dayNotes[Number(button.dataset.deleteNote)]);}
+      finally {button.disabled=false;}
+    };
+  }
   frame.style.setProperty('--day-paper',recipe.color);
   frame.style.setProperty('--day-tilt',recipe.tilt+'deg');
   frame.style.setProperty('--day-duration',recipe.interval+'ms');
