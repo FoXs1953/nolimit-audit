@@ -1,4 +1,4 @@
-self.DIARY_BUILD = "6b693daf8fa129f2";
+self.DIARY_BUILD = "e2321a62278c57a8";
 self.DIARY_FILES = [
   "./ab.css",
   "./arttech-preview/index.html",
@@ -41,6 +41,7 @@ self.DIARY_FILES = [
   "./diary/media/river.jpg",
   "./diary/music-link.js",
   "./diary/player.js",
+  "./diary/profile-name.js",
   "./diary/provider-player.js",
   "./diary/settings.js",
   "./diary/shared-day.css",

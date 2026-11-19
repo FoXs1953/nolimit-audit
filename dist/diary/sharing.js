@@ -1,4 +1,6 @@
-import {api,signInUrl,publicationLink,claimPublication,rememberPublication,forgetPublication} from './social-api.js';
+import {api,saveProfileName,publicationLink,claimPublication,rememberPublication,forgetPublication} from './social-api.js';
+import {profileNameError,profileNameForm,readProfileName,updateNameInput} from './profile-name.js';
+import {t as peopleText} from './locales/friends-hub.js';
 import {shareText as t} from './locales/sharing.js';
 import {presentRecipe,storyLanguage} from './art.js';
 import {musicLink} from './music-link.js';
@@ -11,7 +13,8 @@ export function socialError(error) {
   if(error?.code==='invalid_media')return t('mediaType');
   if(error?.code==='profile_required')return t('needProfile');
   if(error?.code==='account_changed')return t('otherOwner');
-  if([401,403].includes(error?.status))return t('needLogin');
+  if(error?.status===401)return t('needProfile');
+  if(error?.status===403)return t('missing');
   if(error?.status===404)return t('missing');
   if(error?.status===409)return t('conflict');
   return t('network');
@@ -57,16 +60,43 @@ export function openAccess(ctx,{day,publicationId}){
     const release=()=>{for(const url of previews) URL.revokeObjectURL(url);previews=[];};
     const dialog=host.closest('dialog');
     dialog?.addEventListener('close',release,{once:true});
+    const showNameForm=()=>{
+      root.innerHTML='<p>'+esc(t('needProfile'))+'</p>'+profileNameForm('share-name')+'<p role="status" data-name-status></p>';
+      const form=root.querySelector('[data-profile-form]'), field=form.elements.name, button=form.querySelector('button');
+      const status=root.querySelector('[data-name-status]');
+      field.oninput=()=>{status.textContent='';updateNameInput(field);};
+      form.onsubmit=async event=>{
+        event.preventDefault();
+        if (button.disabled) return;
+        const name=readProfileName(form);
+        if (!name) return;
+        button.disabled=true;field.disabled=true;form.setAttribute('aria-busy','true');
+        status.textContent=peopleText('busy');
+        try {
+          await saveProfileName(name,{signal:AbortSignal.timeout(15000)});
+          if (form.isConnected) {
+            await start();
+            root.querySelector('[data-sharing-form] [name=audience]:checked')?.focus({preventScroll:true});
+          }
+        } catch(error) {
+          if (!form.isConnected) return;
+          if (error.code==='account_changed') {await start();return;}
+          const detail=profileNameError(error);
+          status.textContent=detail?peopleText(detail):socialError(error);
+        } finally {
+          if (form.isConnected) {
+            field.disabled=false;form.removeAttribute('aria-busy');updateNameInput(field);
+            field.focus({preventScroll:true});
+          }
+        }
+      };
+    };
     async function start(notice=''){
       release();
       try{
         const session=await api('/session');
         if(!root.isConnected)return;
-        if(!session.user){
-          root.innerHTML='<p>'+esc(t(session.authenticated?'needProfile':'needLogin'))+'</p><a class="primary social-link" '+(session.authenticated?'href="#friends/people"':'target="_top" href="'+esc(signInUrl())+'"')+'>'+esc(t(session.authenticated?'setup':'login'))+'</a>';
-          if(session.authenticated)root.querySelector('a').onclick=e=>{e.preventDefault();ctx.go('friends/people');};
-          return;
-        }
+        if(!session.user){showNameForm();return;}
         let binding=day?await publicationLink(day.id):null;
         if (binding && binding.ownerId!==session.user.id) throw Object.assign(new Error(t('otherOwner')),{display:true});
         let pubId=publicationId || binding?.id;

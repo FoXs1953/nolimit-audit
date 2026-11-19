@@ -1,9 +1,58 @@
 const base='/api/social';
-export function signInUrl(){
-  return '/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.search+location.hash);
+const nameKey='nolimit:friends:name';
+
+// A read/write IndexedDB transaction gives simultaneous tabs the same random identity.
+let deviceDatabase,deviceKey;
+function deviceStore(){
+  if(!deviceDatabase)deviceDatabase=new Promise((resolve,reject)=>{
+    const request=indexedDB.open('nolimit-friends-device',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('device');
+    request.onsuccess=()=>{const db=request.result;db.onversionchange=()=>{db.close();deviceDatabase=null;deviceKey=null;};resolve(db);};
+    request.onerror=()=>reject(request.error);
+  }).catch(error=>{deviceDatabase=null;throw error;});
+  return deviceDatabase;
+}
+async function browserKey(create=false){
+  if(deviceKey)return deviceKey;
+  try {
+    const db=await deviceStore();
+    const key=await new Promise((resolve,reject)=>{
+      const tx=db.transaction('device',create?'readwrite':'readonly'),store=tx.objectStore('device');
+      const request=store.get('key');
+      let value;
+      request.onsuccess=()=>{
+        value=request.result;
+        if(!value && create){
+          value=Array.from(crypto.getRandomValues(new Uint8Array(32)),n=>n.toString(16).padStart(2,'0')).join('');
+          store.add(value,'key');
+        }
+      };
+      tx.oncomplete=()=>resolve(value);tx.onabort=()=>reject(tx.error);
+    });
+    if(key)deviceKey=key;
+    return key;
+  }catch{return null;} // Browsers with unavailable IndexedDB can still use the session cookie.
+}
+export function getCachedProfileName(){
+  try{return localStorage.getItem(nameKey) || '';}catch{return '';}
+}
+export async function saveProfileName(name,options={}){
+  const headers=new Headers(options.headers);
+  if(!headers.has('X-NoLimit-Account')){
+    await browserKey(true);
+    headers.set('X-NoLimit-Setup','1');
+  }
+  const saved=await api('/profile',{...options,method:'POST',headers,body:{name}});
+  const current=await api('/session',{signal:options.signal});
+  if(current.user && current.user.id!==saved.user.id)throw Object.assign(new Error('account_changed'),{code:'account_changed'});
+  if(current.user?.id!==saved.user.id)throw Object.assign(new Error('profile_unconfirmed'),{code:'profile_unconfirmed'});
+  try{localStorage.setItem(nameKey,current.user.name);}catch{}
+  return current;
 }
 export async function api(path,{method='GET',body,signal,headers:extra={}}={}){
   const headers=new Headers(extra);
+  const key=await browserKey();
+  if(key)headers.set('X-NoLimit-Device',key);
   let data=body;
   if(method!=='GET' && method!=='HEAD')headers.set('X-NoLimit','diary');
   if(body instanceof Blob) {
@@ -12,7 +61,7 @@ export async function api(path,{method='GET',body,signal,headers:extra={}}={}){
     headers.set('Content-Type','application/json');
     data=JSON.stringify(body);
   }
-  const response=await fetch(base+path,{method,headers,body:data,signal,credentials:'same-origin',cache:'no-store'});
+  const response=await fetch(base+path,{method,headers,body:data,signal,credentials:'same-origin',cache:'no-store',redirect:'error'});
   const result=await response.json().catch(()=>null);
   if(!response.ok || result===null){
     const code=result?.error || 'service_unavailable';

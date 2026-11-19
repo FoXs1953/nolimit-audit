@@ -2,7 +2,6 @@ import {translator} from '../i18n.js';
 
 export const discussionText=translator({
   back:['Назад','Артқа','Back'],
-  accessSignIn:['Войди, чтобы открыть день, которым с тобой поделились.','Өзіңмен бөліскен күнді көру үшін кір.','Sign in to open a day shared with you.'],
   saved:['Комментарий отправлен.','Пікір жіберілді.','Comment sent.'],
   removed:['Комментарий удалён.','Пікір жойылды.','Comment deleted.'],
   confirmRemove:['Удалить этот комментарий?','Осы пікір жойылсын ба?','Delete this comment?'],

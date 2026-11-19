@@ -1,15 +1,10 @@
+import {socialIdentity,rememberBrowser} from './identity.mjs';
 import {handlePeople} from './people.mjs';
 import {handlePublications} from './publications.mjs';
 import {json,fail} from './http.mjs';
 import {publicFiles} from 'nolimit:public-files';
 
 const apiRoot='/api/social';
-async function accountId(request) {
-  const id=request.headers.get('oai-authenticated-user-id');
-  if (!id || !request.headers.get('oai-authenticated-user-email')) return null;
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('nolimit-arttech-friends:v1:'+id));
-  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
-}
 function staticResponse(request,path) {
   const file=publicFiles[path.endsWith('/')?path+'index.html':path];
   if (!file || !['GET','HEAD'].includes(request.method)) return new Response(null,{status:404});
@@ -43,11 +38,13 @@ export default {
         const origin=request.headers.get('Origin');
         if ((origin && origin!==url.origin) || request.headers.get('Sec-Fetch-Site')==='cross-site' || request.headers.get('X-NoLimit')!=='diary') fail(403,'invalid_request');
       }
-      const actor=await accountId(request);
+      const path=url.pathname.slice(apiRoot.length);
+      const identity=await socialIdentity(request,env.DB,path);
+      const actor=identity.id;
       const expected=request.headers.get('X-NoLimit-Account');
       if(expected && actor!==expected)fail(409,'account_changed');
-      const path=url.pathname.slice(apiRoot.length);
-      return await handlePeople(request,env,actor,path) || await handlePublications(request,env,actor,path) || json({error:'unavailable'},404);
+      const response=await handlePeople(request,env,actor,path) || await handlePublications(request,env,actor,path) || json({error:'unavailable'},404);
+      return rememberBrowser(response,identity);
     } catch(error) {
       if (!error.status) console.error('Social service error',error.name,String(error.message).slice(0,180));
       return json({error:error.code || 'service_unavailable'},error.status || 503);
