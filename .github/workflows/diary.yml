@@ -27,6 +27,11 @@ jobs:
         run: |
           python3 tools/update_offline.py
           git diff --exit-code -- dist/offline-list.js
+      - name: Verify friendships, publication access and discussion
+        run: |
+          npm run build
+          npm run test:publications
+          npm run test:friends
       - name: Verify journal in the browser
         run: |
           python3 -m http.server 8000 --bind 127.0.0.1 --directory dist >/tmp/nolimit-http.log 2>&1 &

@@ -189,7 +189,7 @@ function bytesOf(blob) {
   if (!bytes) { bytes=blob.arrayBuffer(); blobBytes.set(blob,bytes); }
   return bytes;
 }
-async function localAsset(asset, kind) {
+export async function localAsset(asset, kind) {
   if (asset.blob instanceof Blob) return asset.blob;
   if (!DEMO_PATH.test(asset.src || '')) throw bad(t('unavailableFile'));
   const src=asset.src.replace(/^(?:\.\/|\/)/,'');

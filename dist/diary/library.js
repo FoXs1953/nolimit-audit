@@ -1,7 +1,9 @@
 import {visibleDayNotes} from './store.js';
 import {postcardMood} from './art.js';
 import {demos} from './demos.js';
-import {getLanguage, getLocale} from './i18n.js';
+import {getLanguage,getLocale,translator} from './i18n.js';
+import {archivePublicationLinks,syncArchivePublications} from './social-api.js';
+import {shareText} from './locales/sharing.js';
 import {t} from './locales/views.js';
 import {editDayButton, esc, formatDate, icon} from './ui.js';
 
@@ -14,11 +16,47 @@ function label(day) {
   return day.title || day.titleOverride || day.text?.trim().split(/\s+/).slice(0,7).join(' ') ||
     day.moments?.[0]?.text || t('dayEntry');
 }
+const badgeText=translator({
+  last:['Последние данные: {mode}','Соңғы дерек: {mode}','Last confirmed: {mode}'],
+  unknown:['Доступ не подтверждён','Рұқсат расталмады','Access unconfirmed']
+});
+
 export function mountLibrary(root, records, examples, ctx) {
   const language = getLanguage();
   const days = (examples ? [...demos] : [...records]).sort((a,b) => examples ? 0 : b.date.localeCompare(a.date));
   const thumbnails = new Map();
-  let filtered;
+  let filtered,links=null,sync=null,timer;
+  let verified=new Set();
+  const localIds=new Set(days.map(day=>day.id)), lifetime=new AbortController();
+  function badges() {
+    for (const badge of root.querySelectorAll('[data-visibility]')) {
+      const id=badge.dataset.visibility, link=links?.get(id);
+      if (!links || (link && !link.confirmed)) badge.textContent=badgeText('unknown');
+      else if (!link) badge.textContent=shareText('private');
+      else badge.textContent=verified.has(id) ? shareText(link.mode) : badgeText('last',{mode:shareText(link.mode)});
+    }
+  }
+  async function syncBadges() {
+    sync?.abort();clearTimeout(timer);
+    const run=new AbortController();sync=run;
+    verified=new Set();
+    try {
+      const before=await archivePublicationLinks(localIds);
+      if (run.signal.aborted) return;
+      links=before;badges();
+      if (!before.size || !navigator.onLine || document.hidden) return;
+      const checked=await syncArchivePublications(before,run.signal);
+      const after=await archivePublicationLinks(localIds);
+      if (run.signal.aborted) return;
+      links=after;verified=checked;
+    } catch { /* Keep the latest confirmed local values labelled as such. */ }
+    finally {
+      if (!run.signal.aborted) {
+        badges();
+        if (links?.size && navigator.onLine && !document.hidden) timer=setTimeout(syncBadges,15000);
+      }
+    }
+  }
   const variants = new Map();
   for (const day of days) {
     const group = variants.get(day.date) || [];
@@ -74,7 +112,7 @@ export function mountLibrary(root, records, examples, ctx) {
       '<span class="day-card-footer"><span class="day-card-copy"><strong id="'+esc(descriptionId)+'">'+esc(label(day))+'</strong>'+
       (note && note.text!==label(day)?'<span class="day-note-excerpt">'+icon('pen',14)+'<span class="ab-sr">'+t('noteLabel')+' </span>'+esc(note.text)+'</span>':'')+
       (day.music?.name?'<span class="day-track">'+icon('music',15)+esc(day.music.name)+'</span>':'')+
-      '</span><span class="day-open-icon">'+icon('chevron',16)+'</span></span></button>'+
+      '<span class="day-visibility" data-visibility="'+esc(day.id)+'"></span></span><span class="day-open-icon">'+icon('chevron',16)+'</span></span></button>'+
       '<div class="day-card-actions">'+editDayButton(day.id,descriptionId)+
         (draft?'<button type="button" class="versions-link" data-draft="'+esc(day.id)+'">'+t('draftActions')+'</button>':'')+
         (copies>1?'<button type="button" class="versions-link" data-versions="'+esc(day.date)+'">'+t('versions')+' · '+copies+'</button>':'')+'</div></article>';
@@ -110,7 +148,11 @@ export function mountLibrary(root, records, examples, ctx) {
       grid.querySelector('[data-empty]').onclick = () => { if(empty) ctx.edit(); else {search.value='';month.value='';paint();search.focus();} };
       return;
     }
-    if(!examples) { grid.innerHTML=personalMonths(filtered);return; }
+    if(!examples) {
+      grid.innerHTML=personalMonths(filtered);
+      badges();
+      return;
+    }
     grid.innerHTML = filtered.map(day => {
       const image = photo(day);
       return '<article class="library-item panel" data-mood="' + postcardMood(day) + '"><button class="library-open" data-id="' + esc(day.id) + '">' +
@@ -130,7 +172,14 @@ export function mountLibrary(root, records, examples, ctx) {
   };
   search?.addEventListener('input',paint); month?.addEventListener('change',paint);
   paint();
+  if (!examples && localIds.size) {
+    const opts={signal:lifetime.signal};
+    for (const event of ['focus','online','offline','nolimit-social-updated']) window.addEventListener(event,syncBadges,opts);
+    document.addEventListener('visibilitychange',syncBadges,opts);
+    void syncBadges();
+  }
   return () => {
+    lifetime.abort();sync?.abort();clearTimeout(timer);
     if (search && getLanguage() !== language) filtersBeforeLanguageChange = {query:search.value,month:month.value};
     for(const url of thumbnails.values())if(url.startsWith('blob:'))URL.revokeObjectURL(url);
   };

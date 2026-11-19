@@ -2,6 +2,8 @@ import {translator} from '../i18n.js';
 
 export const t = translator({
   journal:['Дневник','Күнделік','Journal'],
+  friends:['Друзья','Достар','Friends'],
+  friendsSubtitle:['','',''],
   today:['Мой дневник','Менің күнделігім','My journal'],
   todayShort:['Сегодня','Бүгін','Today'],
   todayIntro:['Истории, фотографии и музыка твоих дней.','Күндеріңнен қалған әңгімелер, суреттер мен әуендер.','Stories, photos and music from your days.'],
@@ -22,7 +24,7 @@ export const t = translator({
   language:['Язык интерфейса','Интерфейс тілі','Interface language'],
   about:['О дневнике','Күнделік туралы','About the journal'],
   aboutIntro:['Слова, свет фотографии и характер музыки становятся открыткой. Нажми «Записать день», добавь три материала и сохрани открытку в «Мои дни».','Сөздер, фотодағы жарық пен әуеннің ырғағы ашықхатқа айналады. Күнің туралы жазып, сурет пен ән қос та, ашықхатты «Менің күндерім» бөліміне сақта.','Your words, the light in your photo and the feel of your music shape the postcard. Start an entry, add all three and save the result to My days.'],
-  privacy:['Личные записи остаются в этом браузере. В настройках можно скачать копию. В примерах использованы вымышленные записи, фотографии с разрешением на использование и оригинальная музыка.','Жеке жазбалар осы браузерде сақталады. Баптаулардан көшірмесін жүктеп ала аласың. Үлгілерде ойдан шығарылған жазбалар, пайдалануға рұқсат етілген суреттер мен авторлық әуендер бар.','Your entries stay in this browser. Download a backup in Settings. The examples use fictional stories, licensed photographs and original music.'],
+  privacy:['Личный архив хранится в этом браузере. Выбранные для друзей открытки хранятся также онлайн. В настройках можно скачать копию. В примерах использованы вымышленные записи, фотографии с разрешением на использование и оригинальная музыка.','Жеке мұрағат осы браузерде сақталады. Достарыңа ашқан күндер онлайн да сақталады. Баптаулардан көшірмесін жүктеп ала аласың. Үлгілерде ойдан шығарылған жазбалар, пайдалануға рұқсат етілген суреттер мен авторлық әуендер бар.','Your personal archive stays in this browser. Postcards you share with friends are also stored online. Download a backup in Settings. The examples use fictional stories, licensed photographs and original music.'],
   seeExamples:['Открыть примеры дней','Күнделік үлгілерін ашу','Explore sample days'],
   source:['Исходный код и инструкция','Бастапқы код пен нұсқаулық','Source code and instructions'],
   close:['Закрыть','Жабу','Close'],

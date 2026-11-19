@@ -7,6 +7,11 @@ import {mountHome} from './home.js';
 import {mountLibrary} from './library.js';
 import {downloadDays,mountSettings} from './settings.js';
 
+import {mountFriendsHub} from './friends-hub.js';
+import {mountSharedDay} from './shared-day.js';
+import {openAccess,removeRemoteForLocal} from './sharing.js';
+import {publicationLink} from './social-api.js';
+import {shareText} from './locales/sharing.js';
 import {getLanguage,setLanguage} from './i18n.js';
 import {t} from './locales/shell.js';
 
@@ -14,6 +19,7 @@ const screens = {
   today:['today','todayShort','book','todayIntro'],
   archive:['archive','archiveShort','calendar','archiveIntro'],
   examples:['examples','examplesShort','layers','examplesIntro'],
+  friends:['friends','friends','people','friendsSubtitle'],
   settings:['settings','settings','settings','settingsIntro']
 };
 const find = id => document.getElementById(id);
@@ -33,7 +39,11 @@ function setMotion(value){
 }
 applyMotion();
 systemMotion.addEventListener?.('change',applyMotion);
-const ctx = {icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
+function backFromShared(){
+  if(history.state?.friendOrigin){history.back();return;}
+  go('friends');
+}
+const ctx = {backFromShared,openSharedAccess:id=>openAccess(ctx,{publicationId:id}),shareDay:day=>openAccess(ctx,{day}),icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
 function downloadError(error){toast(error?.message || t('actionError'));}
 function about(){
   sheet(t('about'),'<p><strong>NoLimit · '+t('journal')+'</strong></p><p>'+t('aboutIntro')+'</p><p>'+t('privacy')+'</p>'+
@@ -96,9 +106,11 @@ function quickMoment(){
 function dayActions(day) {
   const row=(key,name,symbol,cls='')=>'<button class="'+cls+'" data-act="'+key+'">'+icon(symbol)+name+'</button>';
   sheet(t('folder'),'<p>'+esc(day.title || formatDate(day.date))+'</p><div class="grid-list">'+
-    row('edit',t('edit'),'pen')+row('export',t('export'),'download')+
+    row('edit',t('edit'),'pen')+(day.status==='ready'?row('share',shareText('access'),'people'):'')+row('export',t('export'),'download')+
     (day.primary===false?row('primary',t('primary'),'check'):'')+row('delete',t('delete'),'trash','danger')+'</div>',body=>{
       body.querySelector('[data-act="edit"]').onclick=()=>edit(day);
+      const share=body.querySelector('[data-act="share"]');
+      if(share)share.onclick=()=>ctx.shareDay(day);
       body.querySelector('[data-act="export"]').onclick=async event=>{
         const btn=event.currentTarget;btn.disabled=true;
         try{await downloadDays([await getDay(day.id) || day],'NoLimit-'+day.date+'.zip');toast(t('downloaded'));}
@@ -141,14 +153,17 @@ async function deleteNote(day,note) {
     }});
   }catch(error){downloadError(error);}
 }
-function confirmDelete(day,returnTo='archive'){
+async function confirmDelete(day,returnTo='archive'){
+  let hasPublication=false;
+  try {hasPublication=Boolean(await publicationLink(day.id));}catch(error){downloadError(error);return;}
   const refresh=()=>returnTo==='today' ? refreshAfterRemoval(day.id) : go('archive',{refresh:true});
-  sheet(t('deleteTitle'),'<p>'+esc(t('confirmDelete',{title:day.title || day.titleOverride || day.text || t('entry'),date:formatDate(day.date,{day:'numeric',month:'long',year:'numeric'})}))+'</p>'+
+  sheet(t('deleteTitle'),'<p>'+esc(t('confirmDelete',{title:day.title || day.titleOverride || day.text || t('entry'),date:formatDate(day.date,{day:'numeric',month:'long',year:'numeric'})}))+'</p>'+(hasPublication?'<p>'+esc(shareText('removeBoth'))+'</p>':'')+
     '<div class="sheet-actions"><button class="secondary" data-no>'+t('cancel')+'</button><button class="primary delete-action" data-yes>'+t('delete')+'</button></div>',body=>{
       body.querySelector('[data-no]').onclick=closeSheet;
       body.querySelector('[data-yes]').onclick=async event=>{
         const btn=event.currentTarget;btn.disabled=true;
         try {
+          if(hasPublication)await removeRemoteForLocal(day.id);
           const removed=await removeDay(day.id);
           drafts.delete(day.id);
           await refresh();
@@ -162,7 +177,8 @@ function confirmDelete(day,returnTo='archive'){
 function parse(raw){
   const hash=String(raw || '').replace(/^#/,'');
   if(Object.hasOwn(screens,hash))return hash;
-  if(/^(edit|day)\/[\w.:%-]+$/.test(hash))return hash;
+  if(/^friends\/(?:people|mine|responses|(?:person|invite)\/[\w.:%-]+)$/.test(hash))return hash;
+  if(/^(edit|day|shared)\/[\w.:%-]+$/.test(hash))return hash;
   return 'today';
 }
 function nav(active){
@@ -175,6 +191,7 @@ function heading(title,subtitle){
   document.title=title+' · NoLimit '+t('journal');find('page-title').textContent=title;
   find('page-sub').textContent=subtitle;find('page-sub').hidden=!subtitle;
 }
+const hubStates=new Map();
 let leaving;
 async function flushEditor(){
   if(!cleanup?.flush)return true;
@@ -190,21 +207,30 @@ async function go(target,options={}){
     return;
   }
   const method=history.state?.panel || history.state?.cardViewer || key===route?'replaceState':'pushState';
-  hidePanel(true);history[method]({},'','#'+key);
+  const state=key.startsWith('shared/') && route.startsWith('friends') ? {friendOrigin:route} : {};
+  hidePanel(true);history[method](state,'','#'+key);
   await render(key,options.focus!==false);
 }
 async function render(key,focus,viewState) {
   const ticket=++generation;
+  if(route.startsWith('friends')){
+    const state=cleanup?.getViewState?.();
+    if(state)hubStates.set(route,state);
+  }
   if(cleanup){cleanup();cleanup=null;}
   route=key;
   const [section,encoded]=key.split('/');
   const root=document.createElement('div');root.className='view-enter';find('view').replaceChildren(root);
-  nav(section==='edit'?'today':section==='day'?(encoded?.startsWith('demo-')?'examples':'archive'):section);
+  nav(section==='shared'?'friends':section==='edit'?'today':section==='day'?(encoded?.startsWith('demo-')?'examples':'archive'):section);
   if(screens[section])heading(t(screens[section][0]),t(screens[section][3]));
   else heading(section==='edit'?t('write'):t('postcard'),'');
   if(focus){window.scrollTo({top:0,behavior:'instant'});find('main').focus({preventScroll:true});}
   try {
-    if(section==='day'||section==='edit'){
+    if(section==='friends'){
+      cleanup=mountFriendsHub(root,key,ctx,viewState || hubStates.get(key));
+    }else if(section==='shared'){
+      cleanup=mountSharedDay(root,decodeURIComponent(encoded),ctx,viewState);
+    }else if(section==='day'||section==='edit'){
       const id=decodeURIComponent(encoded);
       const sample=demos.find(day=>day.id===id);
       const day=sample || await getDay(id) || drafts.get(id);
@@ -293,7 +319,7 @@ find('about').onclick=about;
 window.addEventListener('popstate',restoreLocation);
 window.addEventListener('hashchange',()=>{ if(parse(location.hash)!==route)restoreLocation(); });
 const initial=parse(location.hash);
-history.replaceState({},'','#'+initial);
+history.replaceState(history.state?.friendOrigin && initial.startsWith('shared/') ? {friendOrigin:history.state.friendOrigin} : {},'','#'+initial);
 render(initial,false);
 if ('serviceWorker' in navigator) window.addEventListener('load', () => {
   navigator.serviceWorker.register('./diary-sw.js',{updateViaCache:'none'}).catch(()=>{});
