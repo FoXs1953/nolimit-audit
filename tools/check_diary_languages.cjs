@@ -1,11 +1,11 @@
 // A fresh journal for each run, including when testing the published site.
+const {seedDay,title}=require('./personal-day-fixture.cjs');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const playwright = require('playwright');
 const base = new URL(process.argv[2] || 'http://127.0.0.1:8000/');
 const engine = process.env.ENGINE || 'chromium';
 const languageNames = {ru:'Русский', kk:'Қазақша', en:'English'};
-const titles = {ru:'Солнце осталось в листьях', kk:'Күннің нұры жапырақта қалды', en:'Sunlight lingered in the leaves'};
 const story = 'Жылы жаңбыр терезеге тиді. A friend touched the glass. Я запомню этот вечер.';
 const song = 'My song · Самал';
 const songUrl = 'https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl';
@@ -34,16 +34,16 @@ async function closeDialog(page) {
   await page.getByRole('dialog').waitFor({state:'hidden'});
 }
 
-async function sampleDays(page) {
-  await page.locator('#dock [data-route="examples"]').click();
+async function savedDay(page) {
+  const id=await seedDay(page);
+  await page.locator('#dock [data-route="archive"]').click();
   for(const lang of ['ru','kk','en']){
     await language(page,lang);
-    const first = page.locator('[data-id="demo-leaves"]');
-    await first.getByText(titles[lang],{exact:true}).waitFor();
-    assert.equal(await page.locator('[data-id]').count(),5);
+    await page.locator('[data-id="'+id+'"]').getByText(title,{exact:true}).waitFor();
+    assert.equal(await page.locator('[data-route="examples"]').count(),0);
     await verifyPhoneHeader(page);
   }
-  await page.locator('[data-id="demo-leaves"]').click();
+  await page.locator('[data-id="'+id+'"]').click();
   const viewer = page.locator('[data-card="viewer"]');
   await page.getByRole('button',{name:'Play postcard',exact:true}).click();
   await viewer.getByRole('button',{name:'Next photo',exact:true}).click();
@@ -54,15 +54,16 @@ async function sampleDays(page) {
   await viewer.getByText('2 / 3',{exact:true}).waitFor();
   await page.locator('[data-card="close"]').click();
   await viewer.waitFor({state:'hidden'});
-  await page.getByRole('heading',{name:titles.kk,exact:true}).waitFor();
+  await page.getByRole('heading',{name:title,exact:true}).waitFor();
   assert.match(await page.locator('#page-sub').innerText(),/17 қыркүйек/);
   assert.equal(await page.locator('[data-card="explain"]').count(),0);
   await page.locator('[data-card="read"]').click();
   assert.equal(await page.locator('#sheet-close').getAttribute('aria-label'),'Жабу');
   await closeDialog(page);
   await page.reload();
-  await page.getByRole('heading',{name:titles.kk,exact:true}).waitFor();
+  await page.getByRole('heading',{name:title,exact:true}).waitFor();
   assert.equal(await page.locator('html').getAttribute('lang'),'kk');
+  await page.evaluate(async id=>(await import('./diary/store.js')).removeDay(id),id);
 }
 
 async function createLinkedDay(page) {
@@ -200,13 +201,13 @@ async function concurrentEditors(browser) {
     await page.goto(base.href);
     await page.getByRole('button',{name:'Записать день',exact:true}).waitFor();
     assert.equal(await page.locator('html').getAttribute('lang'),'ru');
-    await sampleDays(page);
+    await savedDay(page);
     await page.setViewportSize({width:390,height:844});
     await createLinkedDay(page);
     await verifyPhoneHeader(page);
     await verifyTheme(page);
     await concurrentEditors(browser);
     assert.deepEqual(errors,[]);
-    console.log(engine+': language switch, mobile header, themes, 5 samples, saved frames, song link, private text, archive, validation and reload verified');
+    console.log(engine+': language switch, mobile header, themes, personal-day navigation, saved frames, song link, private text, archive, validation and reload verified');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

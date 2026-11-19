@@ -81,14 +81,13 @@
   .home-memory,.day-notes p,.card-story p { color:var(--ink); }
   .home-memory-copy small,.home-memory>svg,.ab-row-next,.diary-card .card-row-next,
   .day-notes time,.list-detail,.viewer-caption,.viewer-header small,.viewer-music small,.viewer-count,.viewer-status { color:var(--muted); }
-  .ab-source-icon,.home-memory-mark,.sample-sound,.viewer-music-glyph,.empty-icon,.personal-gallery .empty-icon { background:var(--selected); color:var(--blue); }
-  .home-all-days,.day-edit,.card-story button,.viewer-source,.note-disclosure summary,.sample-link { color:var(--blue); }
+  .ab-source-icon,.home-memory-mark,.viewer-music-glyph,.empty-icon,.personal-gallery .empty-icon { background:var(--selected); color:var(--blue); }
+  .home-all-days,.day-edit,.card-story button,.viewer-source,.note-disclosure summary { color:var(--blue); }
   .day-card-actions .day-edit,.personal-card .day-visibility { color:inherit; }
   .day-card-actions button:is(:hover,:focus-visible) { color:#242733; background:var(--stamp); }
-  .sample-paging button,.viewer-control:not(.viewer-play) { background:var(--control); color:var(--ink); }
-  .sample-paging button:disabled { background:var(--paper); color:var(--muted); opacity:.55; }
+  .viewer-control:not(.viewer-play) { background:var(--control); color:var(--ink); }
   .home-memory:is(:hover,:focus-visible),.ab-row:hover,.viewer-control:not(.viewer-play):hover { background:var(--hover); }
-  .day-edit:is(:hover,:focus-visible),.sample-sound:hover { background:var(--selected); color:var(--blue); }
+  .day-edit:is(:hover,:focus-visible) { background:var(--selected); color:var(--blue); }
   .day-card-actions .day-edit:is(:hover,:focus-visible) { color:#242733; background:var(--stamp); }
   .viewer-mute[aria-pressed="true"]::after { background:var(--muted); box-shadow:0 1px 0 var(--control); }
   .viewer-photo-well { background:#17191d; border-color:color-mix(in srgb,var(--day-paper) 32%,var(--control)); }
@@ -96,7 +95,7 @@
   .ab-scrub input::-webkit-slider-runnable-track { background:linear-gradient(90deg,var(--blue) 0 var(--ab-fill),var(--control-edge) var(--ab-fill) 100%); }
   .ab-scrub input::-moz-range-track { background:var(--control-edge); }
 
-  .sample-picker select,.month-select select,.search-box,.day-field,.theme-setting select,
+  .month-select select,.search-box,.day-field,.theme-setting select,
   .ed-field :is(input:not([type="range"]),textarea,select) { background:var(--control); border-color:var(--control-edge); color:var(--ink); }
   .search-box svg,.ed-discard,.ed-panel [data-ed-link-action] { color:var(--muted); }
   input::placeholder,textarea::placeholder,.ed-field :is(input,textarea)::placeholder { color:var(--muted); }

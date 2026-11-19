@@ -16,17 +16,16 @@ export const playerText=translator({
   next:['Следующее фото','Келесі фото','Next photo'],
   sound:['Звук','Дыбыс','Sound'],
   music:['Музыка','Музыка','Music'],
+  daySong:['Песня дня','Күннің әні','Song of the day'],
   dayVideo:['Видео дня','Күннің видеосы','Video of the day'],
   openVideo:['Открыть в YouTube','YouTube-та ашу','Watch on YouTube'],
   dayMusic:['Музыка дня','Күннің әуені','Music for the day'],
   openSong:['Открыть песню','Әнді ашу','Open song'],
   folder:['Папка дня','Күн қалтасы','Day folder'],
   read:['Прочитать запись','Жазбаны оқу','Read entry'],
-  copy:['Попробовать на копии','Көшірмесін жасап көру','Try a copy'],
   keep:['Сохранить в свой дневник','Күнделігіме сақтау','Save to my diary'],
   edit:['Изменить день','Күн жазбасын өңдеу','Edit day'],
   options:['Действия с папкой','Қалта әрекеттері','Folder options'],
-  credits:['Авторы материалов','Материал авторлары','Credits'],
   pause:['Пауза','Кідірту','Pause'],
   animate:['Оживить открытку','Ашықхатты жандандыру','Play postcard'],
   play:['Воспроизвести','Ойнату','Play'],
@@ -47,8 +46,5 @@ export const playerText=translator({
   datedEntry:['Запись за {date}','{date} күнгі жазба','Entry for {date}'],
   moments:['Моменты дня','Күннің сәттері','Moments from the day'],
   listen:['Послушать запись','Жазбаны тыңдау','Listen to entry'],
-  stopReading:['Остановить чтение','Оқуды тоқтату','Stop reading'],
-  copyFailed:['Копию не удалось сохранить. Проверь свободное место и попробуй снова.','Көшірме сақталмады. Бос орынды тексеріп, қайталап көр.','The copy could not be saved. Check your available storage and try again.'],
-  fictional:['Вымышленная запись. Музыка написана для этого дневника.','Бұл — ойдан шығарылған жазба. Музыка осы күнделікке арнайы жазылған.','This is a fictional entry. The music was written for this diary.'],
-  photoSource:['Источник фотографии','Фотоның дереккөзі','Photo source']
+  stopReading:['Остановить чтение','Оқуды тоқтату','Stop reading']
 });

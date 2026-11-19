@@ -1,7 +1,6 @@
 import {isGalleryVideo, visibleDayNotes} from './store.js';
 import {postcardMood} from './art.js';
 import {artText} from './locales/art.js';
-import {demos} from './demos.js';
 import {getLanguage,getLocale,translator} from './i18n.js';
 import {archivePublicationLinks,syncArchivePublications} from './social-api.js';
 import {shareText} from './locales/sharing.js';
@@ -22,9 +21,9 @@ const badgeText=translator({
   unknown:['Доступ не подтверждён','Рұқсат расталмады','Access unconfirmed']
 });
 
-export function mountLibrary(root, records, examples, ctx) {
+export function mountLibrary(root, records, ctx) {
   const language = getLanguage();
-  const days = (examples ? [...demos] : [...records]).sort((a,b) => examples ? 0 : b.date.localeCompare(a.date));
+  const days = [...records].sort((a,b) => b.date.localeCompare(a.date));
   const thumbnails = new Map();
   let filtered,links=null,sync=null,timer;
   let verified=new Set();
@@ -73,13 +72,13 @@ export function mountLibrary(root, records, examples, ctx) {
         body.querySelectorAll('[data-version]').forEach(button => { button.onclick = () => open(group.find(day=>day.id===button.dataset.version)); });
     });
   }
-  root.innerHTML = (examples || !days.length ? '' :
+  root.innerHTML = (!days.length ? '' :
     '<div class="library-tools"><label class="search-box">' + icon('search',19) +
     '<span class="ab-sr">'+t('searchArchive')+'</span><input type="search" placeholder="'+t('searchHint')+'" data-search></label>' +
     '<label class="month-select"><span class="ab-sr">'+t('chooseMonth')+'</span><select data-month><option value="">'+t('allMonths')+'</option>' +
     [...new Set(days.map(day=>day.date.slice(0,7)))].map(m => '<option value="' + esc(m) + '">' +
     esc(formatDate(m+'-01',{month:'long',year:'numeric'})) + '</option>').join('') + '</select></label></div>') +
-    '<div class="'+(examples ? 'library-grid' : 'personal-gallery')+'" data-grid></div>';
+    '<div class="personal-gallery" data-grid></div>';
   const grid = root.querySelector('[data-grid]');
   const search = root.querySelector('[data-search]'), month = root.querySelector('[data-month]');
   if (search && filtersBeforeLanguageChange) {
@@ -148,19 +147,8 @@ export function mountLibrary(root, records, examples, ctx) {
       grid.querySelector('[data-empty]').onclick = () => { if(empty) ctx.edit(); else {search.value='';month.value='';paint();search.focus();} };
       return;
     }
-    if(!examples) {
-      grid.innerHTML=personalMonths(filtered);
-      badges();
-      return;
-    }
-    grid.innerHTML = filtered.map(day => {
-      const image = photo(day);
-      return '<article class="library-item panel" data-mood="' + postcardMood(day) + '"><button class="library-open" data-id="' + esc(day.id) + '">' +
-        (image ? '<img class="library-photo" loading="lazy" src="' + esc(image) + '" alt="">' : '<span class="library-photo empty-cover">'+icon('pen',30)+'</span>') +
-        '<span class="library-copy"><small>' + esc(formatDate(day.date)) +
-        (day.status !== 'ready' ? ' · '+t('draft') : '') + '</small><strong>' + esc(label(day)) +
-        '</strong><span>'+esc(day.music?.name || t('continueEntry'))+'</span></span><i>'+icon('chevron',17)+'</i></button></article>';
-    }).join('');
+    grid.innerHTML=personalMonths(filtered);
+    badges();
   }
   grid.onclick = event => {
     const button = event.target.closest('[data-id],[data-versions],[data-draft],[data-edit-day]');
@@ -172,7 +160,7 @@ export function mountLibrary(root, records, examples, ctx) {
   };
   search?.addEventListener('input',paint); month?.addEventListener('change',paint);
   paint();
-  if (!examples && localIds.size) {
+  if (localIds.size) {
     const opts={signal:lifetime.signal};
     for (const event of ['focus','online','offline','nolimit-social-updated']) window.addEventListener(event,syncBadges,opts);
     document.addEventListener('visibilitychange',syncBadges,opts);

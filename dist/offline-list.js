@@ -1,4 +1,4 @@
-self.DIARY_BUILD = "e2321a62278c57a8";
+self.DIARY_BUILD = "cee05fb73aab27ff";
 self.DIARY_FILES = [
   "./ab.css",
   "./arttech-preview/index.html",
@@ -7,7 +7,6 @@ self.DIARY_FILES = [
   "./diary/app.js",
   "./diary/art.css",
   "./diary/art.js",
-  "./diary/demos.js",
   "./diary/diary.css",
   "./diary/editor.css",
   "./diary/editor.js",
@@ -17,7 +16,6 @@ self.DIARY_FILES = [
   "./diary/i18n.js",
   "./diary/library.js",
   "./diary/locales/art.js",
-  "./diary/locales/demos.js",
   "./diary/locales/discussion.js",
   "./diary/locales/editor.js",
   "./diary/locales/friends-hub.js",

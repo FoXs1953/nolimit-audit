@@ -1,12 +1,13 @@
 // Verify the ArtTech inputs, generated series and real mobile-player controls.
 const assert=require('node:assert/strict');
+const {personalDay,seedDay,title}=require('./personal-day-fixture.cjs');
 const {chromium,webkit}=require('playwright');
 const origin=new URL(process.argv[2] || 'http://127.0.0.1:8000/');
 const words=s=>s.match(/[\p{L}\p{N}]+(?:[-’'][\p{L}\p{N}]+)*/gu)||[];
 const cases=[
-  ['ru','Оживить открытку','3 из 3','Текст','Солнце осталось в листьях'],
-  ['kk','Ашықхатты жандандыру','3 / 3','Мәтін','Күннің нұры жапырақта қалды'],
-  ['en','Play postcard','3 of 3','Text','Sunlight lingered in the leaves']
+  ['ru','Оживить открытку','3 из 3'],
+  ['kk','Ашықхатты жандандыру','3 / 3'],
+  ['en','Play postcard','3 of 3']
 ];
 
 (async()=>{
@@ -33,6 +34,13 @@ const cases=[
       const NativeAudio=window.Audio;
       window.Audio=class extends NativeAudio { constructor(...args){super(...args);window.__audio.push(this);} };
     });
+    await page.goto(origin.href);
+    const leavesId=await seedDay(page);
+    const twoFrames=personalDay().photos.slice(0,2);
+    const coffeeId=await seedDay(page,{
+      date:'2026-10-11',photos:twoFrames,
+      music:{kind:'file',name:'Утренняя мелодия',src:'./diary/media/coffee.mp3',bpm:86,energy:'steady'}
+    });
     // Hold back the MP3 while the user moves to frame three. This host returns a
     // complete 200 response even for Range requests, like the public static host.
     const mp3=await context.request.get(new URL('diary/media/leaves.mp3',origin).href);
@@ -44,11 +52,10 @@ const cases=[
       await gate;
       await route.fulfill({status:200,contentType:'audio/mpeg',body:mediaBytes});
     });
-    await page.goto(new URL('#day/demo-leaves',origin).href,{waitUntil:'commit'});
+    await page.goto(new URL('#day/'+leavesId,origin).href,{waitUntil:'commit'});
     const card=k=>page.locator('[data-card="'+k+'"]');
     await card('hero-play').waitFor();
-    const series=[];
-    for(const [lang,play,lastFrame,textLabel,title] of cases){
+    for(const [lang,play,lastFrame] of cases){
       await page.locator('[data-language="'+lang+'"]').click();
       await page.getByRole('heading',{name:title,exact:true}).waitFor();
       await page.getByRole('button',{name:play,exact:true}).click();
@@ -68,7 +75,7 @@ const cases=[
         2*parseFloat(el.style.getPropertyValue('--day-duration'))/1000);
       await page.waitForFunction(start=>{
         const audio=window.__audio.at(-1);
-        if (audio?.error) throw Error('Demo playback error '+audio.error.code+': '+audio.error.message);
+        if (audio?.error) throw Error('Personal day playback error '+audio.error.code+': '+audio.error.message);
         return audio && !audio.paused && !audio.seeking && start<audio.duration && audio.currentTime>=start;
       },target,{timeout:6000});
       const startedAt=await page.evaluate(()=>window.__audio.at(-1).currentTime);
@@ -85,46 +92,22 @@ const cases=[
       await page.evaluate(()=>{window.__voices=[];});
       await card('read').click();
       const story=page.getByRole('dialog').locator('.card-original');
-      assert.equal(await story.getAttribute('lang'),lang);
+      assert.equal(await story.getAttribute('lang'),'ru');
       const read=page.getByRole('dialog').locator('[data-speak]');
       assert.equal(await read.isVisible(),false);
-      await page.evaluate(code=>{
-        window.__voices=[{lang:'ru-RU',localService:true},{lang:code,localService:false},{lang:code,localService:true}];
+      await page.evaluate(()=>{
+        window.__voices=[{lang:'en-GB',localService:true},{lang:'ru-RU',localService:false},{lang:'ru-RU',localService:true}];
         speechSynthesis.dispatchEvent(new Event('voiceschanged'));
-      },lang);
+      });
       await read.click();
       const spoken=await page.evaluate(()=>({text:window.__utterance.text,lang:window.__utterance.lang,local:window.__utterance.voice.localService}));
-      assert.equal(spoken.text,await story.textContent());assert.equal(spoken.lang.split('-')[0],lang);assert.equal(spoken.local,true);
+      assert.equal(spoken.text,await story.textContent());assert.equal(spoken.lang.split('-')[0],'ru');assert.equal(spoken.local,true);
       await read.click();await page.getByRole('dialog').locator('button').first().click();
-      await card('credits').click();
-      assert.equal(await page.getByRole('dialog').getByRole('link').count(),3);
-      await page.getByRole('dialog').locator('button').first().click();
+      await card('edit').waitFor();
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-      const rows=await page.evaluate(async()=>{
-        const {demos}=await import('./diary/demos.js');
-        const {makeRecipe}=await import('./diary/art.js');
-        return Promise.all(demos.map(async d=>{
-          const r=makeRecipe(d);
-          const media=await Promise.all([...d.photos,d.music].map(async m=>{
-            const res=await fetch(m.src);
-            return res.ok && (await res.blob()).size>0;
-          }));
-          return {id:d.id,title:r.title,text:d.text,caption:r.caption,photos:d.photos.length,
-            song:d.music.src,media:media.every(Boolean),style:[r.mood,r.motion,r.color,r.interval]};
-        }));
-      });
-      assert.equal(rows.length,5);
-      assert.ok(new Set(rows.map(r=>r.style[0])).size>=3);
-      for(const row of rows){
-        assert.equal(row.title,words(row.text.split('.')[0]).slice(0,7).join(' '));
-        assert.ok(words(row.title).length>=3 && words(row.title).length<=7);
-        assert.ok(row.caption && row.photos>=1 && row.song.endsWith('.mp3') && row.media);
-      }
-      series.push(rows.map(row=>[row.id,...row.style]));
     }
-    assert.deepEqual(series[0],series[1]);assert.deepEqual(series[1],series[2]);
 
-    await page.goto(new URL('#day/demo-coffee',origin).href,{waitUntil:'domcontentloaded'});
+    await page.goto(new URL('#day/'+coffeeId,origin).href,{waitUntil:'domcontentloaded'});
     await card('hero-play').click();
     await page.getByText('2 of 2',{exact:true}).waitFor();
     await page.getByText('Postcard finished',{exact:true}).waitFor({timeout:25000});
@@ -214,6 +197,6 @@ const cases=[
     await songPage.waitForURL('https://bandcamp.com/track/test-song');
     await songPage.close();
     assert.deepEqual(errors,[]);
-    console.log('PASS '+engine+': 15 translated example cards, generated titles, 3 independent art inputs, real audio, external song, original story, mobile controls and language-switch playback state');
+    console.log('PASS '+engine+': personal cards in 3 UI languages, generated titles, 3 independent art inputs, real audio, external song, original story, mobile controls and language-switch playback state');
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
