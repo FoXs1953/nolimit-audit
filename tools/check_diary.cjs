@@ -316,25 +316,85 @@ async function personalPreviews(browser,errors) {
     console.log(engine+' 390px touch: edited the selected saved day and draft from both previews, verified saved changes, deletion and undo');
   } finally {await ctx.close();}
 }
-// Playwright's recorder creates a small silent WebM on the hosted runner.
+async function recordGalleryClip(page,dir) {
+  const clip=await page.evaluate(async engine=>{
+    const types=engine==='webkit'
+      ? ['video/mp4','video/webm;codecs=vp8','video/webm']
+      : ['video/webm;codecs=vp8','video/webm','video/mp4'];
+    const player=document.createElement('video');
+    const mimeType=types.find(type=>MediaRecorder.isTypeSupported(type) && player.canPlayType(type));
+    if(!mimeType)throw Error('No recordable and playable gallery format: '+types.join(', '));
+
+    const canvas=document.createElement('canvas');
+    canvas.width=160;canvas.height=120;
+    const paint=canvas.getContext('2d');
+    let frame=0;
+    function draw(){
+      paint.fillStyle='#345c42';paint.fillRect(0,0,160,120);
+      paint.fillStyle='#d4e9ac';paint.fillRect((frame++*8)%144,36,16,48);
+    }
+    draw();
+    const stream=canvas.captureStream(12);
+    let recorder, animation, stop, watchdog;
+    try {
+      recorder=new MediaRecorder(stream,{mimeType});
+      const chunks=[];
+      await new Promise((resolve,reject)=>{
+        recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
+        recorder.onerror=event=>reject(event.error || Error('Recorder failed for '+mimeType));
+        recorder.onstop=resolve;
+        watchdog=setTimeout(()=>reject(Error('Timed out recording '+mimeType)),10000);
+        recorder.onstart=()=>{stop=setTimeout(()=>recorder.stop(),1000);};
+        recorder.start();
+        animation=setInterval(draw,80);
+      });
+      const bytes=new Uint8Array(await new Blob(chunks).arrayBuffer());
+      if(!bytes.length)throw Error('Empty gallery clip for '+mimeType);
+      return {ext:mimeType.startsWith('video/mp4')?'mp4':'webm',bytes:Array.from(bytes)};
+    } finally {
+      clearInterval(animation);clearTimeout(stop);clearTimeout(watchdog);
+      try {if(recorder && recorder.state!=='inactive')recorder.stop();}
+      finally {for(const track of stream.getTracks())track.stop();}
+    }
+  },engine);
+  const filename=path.join(dir,'gallery-clip.'+clip.ext);
+  await fs.writeFile(filename,Buffer.from(clip.bytes));
+  return filename;
+}
+
+async function galleryDiagnostics(page) {
+  const snapshot=page.evaluate(async()=>{
+    let frames=0, nextFrame;
+    function tick(){frames++;nextFrame=requestAnimationFrame(tick);}
+    nextFrame=requestAnimationFrame(tick);
+    await new Promise(resolve=>setTimeout(resolve,250));
+    cancelAnimationFrame(nextFrame);
+    const controls=[...document.querySelectorAll('[data-ed-select],[data-ed-photo-op="cover"],[data-card="hero-play"],[data-card="next"]')].map(el=>{
+      const {x,y,width,height}=el.getBoundingClientRect();
+      const hit=document.elementFromPoint(x+width/2,y+height/2);
+      return {name:el.getAttribute('aria-label') || el.textContent.trim(),role:el.getAttribute('role') || el.localName,
+        rect:{x,y,width,height},disabled:el.disabled,centerTarget:hit?.localName,hitSelf:el.contains(hit)};
+    });
+    return {readyState:document.readyState,visibility:document.visibilityState,framesIn250ms:frames,controls,
+      videos:[...document.querySelectorAll('video')].map(el=>({readyState:el.readyState,width:el.videoWidth,
+        height:el.videoHeight,error:el.error?.message || el.error?.code || null})),
+      alerts:[...document.querySelectorAll('[role="alert"]')].map(el=>el.textContent.trim()).filter(Boolean)};
+  });
+  return Promise.race([snapshot,new Promise(resolve=>setTimeout(()=>resolve('Page did not answer within 3s'),3000).unref())]);
+}
+
 async function mixedGallery(browser,dir,errors) {
-  const recording=await browser.newContext({recordVideo:{dir,size:{width:160,height:120}}});
-  const scene=await recording.newPage();
-  const clip=scene.video();
-  try {
-    await scene.setContent('<body style="background:#345c42">');
-    await scene.evaluate(()=>document.body.animate([{opacity:.3},{opacity:1}],500).finished.then(()=>{}));
-  } finally {await recording.close();}
-  const videoPath=await clip.path();
   const ctx=await browser.newContext({colorScheme:'dark',viewport:{width:390,height:844}});
+  let page;
   try {
-    const page=await ctx.newPage();logErrors(page,errors);
+    page=await ctx.newPage();logErrors(page,errors);
     await ready(page);
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
     await page.locator('#theme-toggle').click();
     await page.reload();await by(main(page),'Записать день').click();
     assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     await page.getByRole('textbox',{name:'Текст дня'}).fill('Зелёный свет над рекой.');
+    const videoPath=await recordGalleryClip(page,dir);
     await page.locator('[data-ed-photos]').setInputFiles([path.join(media,'river.jpg'),videoPath]);
     // Video probing is asynchronous. Wait for the editor to finish its
     // metadata check before starting the separate user-interaction timeout.
@@ -342,6 +402,7 @@ async function mixedGallery(browser,dir,errors) {
     await picks.nth(1).waitFor({state:'visible',timeout:20000});
     await picks.nth(0).click();
     await picks.nth(1).click();
+    assert.equal(await picks.locator('video').count(),0,'Gallery thumbnails are static');
     await page.locator('[data-ed-photo-op="cover"]').click();
     assert.equal(await page.locator('.ed-crop').count(),0);
     for (const theme of ['light','dark']) {
@@ -371,9 +432,13 @@ async function mixedGallery(browser,dir,errors) {
     assert.ok(await viewerVideo.evaluate(el=>el.paused));
     await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();
     await gotoPage(page,'archive');
-    await page.locator('.day-cover video').waitFor();
+    await page.locator('.day-cover [data-gallery-video]').waitFor();
+    assert.equal(await page.locator('.day-cover video').count(),0,'Archive covers are static');
     await layout(page);
     console.log(engine+': themes persist, mixed attachments save and play, video cover appears in the archive');
+  } catch(error) {
+    if(page)console.error(engine+' mixed gallery',JSON.stringify(await galleryDiagnostics(page).catch(reason=>reason.message)));
+    throw error;
   } finally {await ctx.close();}
 }
 async function dimensions(browser,width,errors) {

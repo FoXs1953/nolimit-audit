@@ -85,8 +85,8 @@ export function openAccess(ctx,{day,publicationId}){
         const recipe=presentRecipe({...source,status:'ready'});
         let value=publication?.mode || 'private';
         const pictures=(source.photos || []).map(photo=>{
-          if(photo.blob instanceof Blob){const url=URL.createObjectURL(photo.blob);previews.push(url);return galleryThumbnail(url,isGalleryVideo(photo));}
-          return /^(?:\.\/diary\/media\/[\w.-]+|\/api\/social\/media\/[\w/-]+)$/.test(photo.src || '')?galleryThumbnail(photo.src,isGalleryVideo(photo)):'';
+          if(photo.blob instanceof Blob){const url=URL.createObjectURL(photo.blob);previews.push(url);return galleryThumbnail(url,isGalleryVideo(photo),photo.poster);}
+          return /^(?:\.\/diary\/media\/[\w.-]+|\/api\/social\/media\/[\w/-]+)$/.test(photo.src || '')?galleryThumbnail(photo.src,isGalleryVideo(photo),photo.poster):'';
         }).filter(Boolean);
         const choice=(mode)=>'<label class="social-mode"><input type="radio" name="audience" value="'+mode+'" '+(value===mode?'checked':'')+'><span>'+esc(t(mode))+'</span></label>';
         const candidates=people.friends.map(p=>'<label class="social-friend-check"><input type="checkbox" name="recipient" value="'+esc(p.id)+'" '+(selected.has(p.id)?'checked':'')+'><span>'+esc(p.name)+' <small>'+esc(p.code)+'</small></span></label>').join('');

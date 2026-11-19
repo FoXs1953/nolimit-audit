@@ -3,7 +3,7 @@ import {presentRecipe,storyLanguage} from './art.js';
 import {formatDate} from './i18n.js';
 import {musicLink} from './music-link.js';
 import {isGalleryVideo,visibleDayNotes} from './store.js';
-import {noteList} from './ui.js';
+import {galleryPoster,noteList} from './ui.js';
 import {mountProvider} from './provider-player.js';
 import {playerText as t} from './locales/player.js';
 
@@ -70,7 +70,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<div class="ab-art card-art"><button class="card-print" type="button" data-card="zoom" aria-label="'+html('zoom')+'" aria-haspopup="dialog">'+
     '<i class="card-back" aria-hidden="true"></i><i class="card-middle" aria-hidden="true"></i><span class="card-print-paper">'+
     '<span class="card-print-clip"><img data-card="photo" alt="">'+
-    (hasVideos?'<video data-card="video-cover" muted playsinline preload="metadata" hidden aria-hidden="true"></video><span class="clip-mark" data-card="clip-mark" hidden>'+icon('play',16)+'</span>':'')+'</span><span class="card-paper-foot"><span>'+esc(date)+'</span><span data-card="paper-count"></span></span></span></button></div></section>'+
+    (hasVideos?'<span class="clip-mark" data-card="clip-mark" hidden>'+icon('play',16)+'</span>':'')+'</span><span class="card-paper-foot"><span>'+esc(date)+'</span><span data-card="paper-count"></span></span></span></button></div></section>'+
     (film?'':'<section class="card-story" data-card="story"><h2>'+html('story')+'</h2><p lang="'+lang+'">'+esc(summary.slice(0,380))+(summary.length>380?'…':'')+'</p>'+
     '<button type="button" data-card="read">'+html('read')+icon('chevron',15)+'</button></section>')+
     '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
@@ -79,7 +79,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     (demo || readOnly?'':'<button type="button" class="day-edit" data-card="viewer-edit">'+icon('pen',17)+html('edit')+'</button>')+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
     '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt="">'+
-    (hasVideos?'<video data-card="viewer-video" controls playsinline preload="metadata" hidden></video>':'')+'</div></div>'+
+    (hasVideos?'<video data-card="viewer-video" controls playsinline preload="none" hidden></video>':'')+'</div></div>'+
     '<div class="viewer-details">'+
     (film?'<div class="viewer-provider" data-card="provider"></div>':'')+
     '<div class="viewer-music"><span class="viewer-music-glyph">'+icon(film?'play':'music',20)+'</span><div>'+ (film?'':'<small>'+html('dayMusic')+'</small>')+'<strong>'+esc(sourceName)+'</strong></div></div>'+
@@ -131,25 +131,26 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   function paint() {
     const p=photos[position], src=urlFor(p), video=isGalleryVideo(p);
     if (clip) {
-      const cover=el('video-cover');
-      el('clip-mark').hidden=cover.hidden=clip.hidden=!video || !src;
-      if (video && src) {
+      el('clip-mark').hidden=clip.hidden=!video || !src;
+      if (video && src && expanded) {
         if (clip.getAttribute('src')!==src) {
           clip.pause();
+          clip.preload='metadata';
+          clip.poster=galleryPoster(p);
           clip.src=src;
-          cover.src=src+'#t=0.001';
         }
         clip.setAttribute('aria-label',p.name || t('dayVideo'));
       } else if (clip.hasAttribute('src')) {
         clip.pause();
         clip.removeAttribute('src');clip.load();
-        cover.removeAttribute('src');cover.load();
       }
     }
     for (const id of ['photo','viewer-photo']) {
       const img=el(id);
-      if(!video && src && img.getAttribute('src')!==src) img.src=src;
-      img.alt=p?.name || t('numberedPhoto',{index:position+1});img.hidden=!src || video;
+      const still=video ? (id==='photo' ? galleryPoster(p) : '') : src;
+      if(still && img.getAttribute('src')!==still) img.src=still;
+      img.alt=p?.name || (video ? t('dayVideo') : t('numberedPhoto',{index:position+1}));
+      img.hidden=!still;
       img.style.objectPosition=clamp(p?.x ?? 50,0,100)+'% '+clamp(p?.y ?? 50,0,100)+'%';
     }
     el('counter').textContent=photos.length?t('count',{index:position+1,count:photos.length}):t('noPhoto');
@@ -259,6 +260,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       viewer.setAttribute('aria-labelledby','card-viewer-title');
     }
     expanded=true;
+    paint();
     viewer.showModal();document.body.style.overflow='hidden';
     el('close').focus({preventScroll:true});
     if(!fromHistory) {
@@ -269,7 +271,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   function closeViewer(useHistory=true) {
     if(!expanded)return;
     expanded=false;
-    pause();viewer.close();
+    pause();viewer.close();paint();
     if(film){
       viewer.setAttribute('role','region');
       viewer.setAttribute('aria-labelledby','card-film-title');
