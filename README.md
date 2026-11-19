@@ -19,6 +19,8 @@
   <a href="https://nolimit-audit-atelier.beige-clove-1590.chatgpt.site/#day/demo-coffee"><img src="docs/images/postcard-coffee-mobile.png" width="23.4%" alt="Открытка на телефоне с чашкой кофе, фразой из дневника и музыкальным плеером"></a>
 </p>
 
+Переключатель **РУ · ҚАЗ · EN** в верхней панели меняет язык интерфейса и пяти примеров. Он запоминает выбор в этом браузере. Личная запись, названия файлов и место в открытке сохраняются. [Сверка с требованиями ArtTech](docs/ARTTECH-CHECK.md)
+
 ## 🎬 Проверка за три минуты
 
 Для этого маршрута уже есть фотографии, текст и звук. Понадобится только браузер.
@@ -93,6 +95,9 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 | Проверка | Что воспроизводит |
 | --- | --- |
 | [Пользовательский сценарий](tools/check_diary.cjs) | Быстрая заметка, перезагрузка, свои фото и WAV, сохранение, поиск, копирование примера, удаление и восстановление. Проверки интерфейса на ширинах 320, 390, 820 и 1360 px. |
+| [Три языка](tools/check_diary_languages.cjs) | Переключение с телефона, сохранность текста, выбранного кадра и версии в двух вкладках. |
+| [Влияние материалов](tools/check_diary_inputs.cjs) | Изменение цвета обложки, движения и длительности кадра по реальным изображениям и аудиофайлам. |
+| [Демонстрационные дни](tools/check_diary_art.cjs) | Пять историй на трёх языках, сгенерированные названия, музыка, воспроизведение и озвучка. |
 | [Хранение и перенос](tools/check_diary_storage.cjs) | Одновременные правки, сохранность медиа и черновиков, повторный импорт, конфликты и отказ от повреждённого ZIP. |
 | [Работа без сети](tools/check_diary_offline.cjs) | Перезагрузка после отключения сети, переход к демо, загрузка фото и запрос фрагмента аудио из кэша. |
 
@@ -106,6 +111,9 @@ npm ci
 npx playwright install chromium webkit
 for engine in chromium webkit; do
   ENGINE="$engine" node tools/check_diary.cjs http://127.0.0.1:8000/ || exit 1
+  ENGINE="$engine" node tools/check_diary_languages.cjs http://127.0.0.1:8000/ || exit 1
+  ENGINE="$engine" node tools/check_diary_inputs.cjs http://127.0.0.1:8000/ || exit 1
+  ENGINE="$engine" node tools/check_diary_art.cjs http://127.0.0.1:8000/ || exit 1
   ENGINE="$engine" node tools/check_diary_storage.cjs http://127.0.0.1:8000/ || exit 1
   ENGINE="$engine" node tools/check_diary_offline.cjs http://127.0.0.1:8000/ || exit 1
 done

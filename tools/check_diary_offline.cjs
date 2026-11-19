@@ -45,6 +45,12 @@ async function interruptibleOrigin(upstream) {
     await page.locator('#dock [data-route="examples"]').click();
     await page.locator('[data-id="demo-leaves"]').click();
     await page.waitForFunction(() => [...document.querySelectorAll('#view img')].some(img=>img.complete && img.naturalWidth));
+    await page.getByRole('button',{name:'Қазақша',exact:true}).click();
+    await page.getByRole('heading',{name:'Күннің нұры жапырақта қалды',exact:true}).waitFor();
+    await page.getByRole('button',{name:'English',exact:true}).click();
+    await page.getByRole('heading',{name:'Sunlight lingered in the leaves',exact:true}).waitFor();
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.getByRole('heading',{name:'Sunlight lingered in the leaves',exact:true}).waitFor();
     const audio = await page.evaluate(async () => {
       const response = await fetch('./diary/media/leaves.mp3',{headers:{Range:'bytes=0-23'}});
       return [response.status, (await response.arrayBuffer()).byteLength,response.headers.get('content-range')];

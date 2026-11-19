@@ -1,17 +1,20 @@
-import {icon,esc,sheet,showPanel,hidePanel,syncPanel,closeSheet,localDate,formatDate,toast} from './ui.js';
+import {icon,esc,sheet,hidePanel,syncPanel,closeSheet,localDate,formatDate,toast,refreshNotice,forgetPanels} from './ui.js';
 import {getDay,listDays,makePrimary,removeDay,saveDay} from './store.js';
 import {mountEditor} from './editor.js';
 import {mountPlayer} from './player.js';
-import {demos} from './demos.js';
+import {demos,refreshDemos} from './demos.js';
 import {mountHome} from './home.js';
 import {mountLibrary} from './library.js';
 import {downloadDays,mountSettings} from './settings.js';
 
+import {getLanguage,setLanguage} from './i18n.js';
+import {t} from './locales/shell.js';
+
 const screens = {
-  today:['Мой дневник','Сегодня','book','Истории, фотографии и музыка твоих дней.'],
-  archive:['Мой архив','Архив','archive','Открытки и незаконченные записи на этом устройстве.'],
-  examples:['Примеры дней','Примеры','layers','Пять историй с разным светом, движением и музыкой.'],
-  settings:['Настройки','Настройки','settings','Отображение и хранение дневника.']
+  today:['today','todayShort','book','todayIntro'],
+  archive:['archive','archiveShort','archive','archiveIntro'],
+  examples:['examples','examplesShort','layers','examplesIntro'],
+  settings:['settings','settings','settings','settingsIntro']
 };
 const find = id => document.getElementById(id);
 const drafts = new Map();
@@ -30,18 +33,17 @@ function setMotion(value){
 }
 applyMotion();
 systemMotion.addEventListener?.('change',applyMotion);
-const ctx = {icon,esc,sheet,closeSheet,toast,go,viewDay,edit,copyDemo,quickMoment,dayActions,about,setMotion,get reducedMotion(){return reduced();}};
-function downloadError(error){toast(error?.message || 'Не удалось выполнить действие. Попробуй ещё раз.');}
+const ctx = {icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,about,setMotion,get reducedMotion(){return reduced();}};
+function downloadError(error){toast(error?.message || t('actionError'));}
 function about(){
-  sheet('О дневнике','<p><strong>NoLimit · Дневник</strong> превращает слова, свет фотографии и характер музыки в открытку. Нажми «Записать день», добавь три материала и сохрани результат в своём архиве.</p>'+
-    '<p>Личные записи остаются в этом браузере. В «Настройках» можно скачать копию. Примеры используют вымышленные записи, разрешённые фотографии и оригинальную музыку.</p>'+
-    '<div class="grid-list"><button data-examples>'+icon('layers')+'Открыть примеры дней</button></div>'+
-    '<p><a href="https://github.com/FoXs1953/nolimit-audit" target="_blank" rel="noopener noreferrer">Исходный код и инструкция</a></p>',body=>{
+  sheet(t('about'),'<p><strong>NoLimit · '+t('journal')+'</strong></p><p>'+t('aboutIntro')+'</p><p>'+t('privacy')+'</p>'+
+    '<div class="grid-list"><button data-examples>'+icon('layers')+t('seeExamples')+'</button></div>'+
+    '<p><a href="https://github.com/FoXs1953/nolimit-audit" target="_blank" rel="noopener noreferrer">'+t('source')+'</a></p>',body=>{
       body.querySelector('[data-examples]').onclick=()=>go('examples');
     });
 }
 function fresh(){
-  return {id:crypto.randomUUID(),date:localDate(),status:'draft',text:'',title:'',caption:'',photos:[],music:null,moments:[]};
+  return {id:crypto.randomUUID(),date:localDate(),contentLanguage:getLanguage(),status:'draft',text:'',title:'',caption:'',photos:[],music:null,moments:[]};
 }
 async function primaryToday(){
   const records = await listDays();
@@ -55,23 +57,28 @@ async function edit(day){
     return go('edit/'+encodeURIComponent(entry.id));
   } catch(error){downloadError(error);}
 }
+function followDraft(previousId,newId){
+  if(route!=='edit/'+encodeURIComponent(previousId))return;
+  route='edit/'+encodeURIComponent(newId);
+  history.replaceState(history.state,'','#'+route);
+}
 function viewDay(day){return go('day/'+encodeURIComponent(day.id));}
 async function copyDemo(day){
   const copy=structuredClone(day);
   delete copy.demo;delete copy.revision;delete copy.primary;
   copy.id=crypto.randomUUID();copy.status='draft';
-  try {const saved=await saveDay(copy);await edit(saved);toast('Открыта твоя копия примера.');}catch(error){downloadError(error);}
+  try {const saved=await saveDay(copy);await edit(saved);toast(t('copyReady'));}catch(error){downloadError(error);}
 }
 function quickMoment(){
-  sheet('Поймать момент','<form class="sheet-form"><label>Что запомнилось?<textarea class="day-field" rows="3" maxlength="1200" required placeholder="Свет в окне, слова друга, песня по дороге…"></textarea></label>'+
-    '<p class="sheet-help">Заметка появится в записи за '+esc(formatDate(localDate()))+'.</p>'+
-    '<p role="alert" class="sheet-error" hidden></p><button class="primary" type="submit">Добавить в день</button></form>',body=>{
+  sheet(t('quick'),'<form class="sheet-form" novalidate><label>'+t('prompt')+'<textarea class="day-field" rows="3" maxlength="1200" required placeholder="'+esc(t('hint'))+'"></textarea></label>'+
+    '<p class="sheet-help">'+esc(t('noteDate',{date:formatDate(localDate())}))+'</p>'+
+    '<p role="alert" class="sheet-error" hidden></p><button class="primary" type="submit">'+t('addMoment')+'</button></form>',body=>{
       const form=body.querySelector('form'),field=form.querySelector('textarea'),btn=form.querySelector('button');
       field.focus({preventScroll:true});
       form.onsubmit=async event=>{
         event.preventDefault();
         const text=field.value.trim();
-        if(!text){field.setCustomValidity('Добавь хотя бы одно слово.');field.reportValidity();field.oninput=()=>field.setCustomValidity('');return;}
+        if(!text){field.setCustomValidity(t('word'));field.reportValidity();field.oninput=()=>field.setCustomValidity('');return;}
         btn.disabled=true;
         try{
           const record=await primaryToday() || fresh();
@@ -86,30 +93,30 @@ function quickMoment(){
           const saved=await saveDay(record);
           drafts.set(saved.id,saved);
           await go('today',{refresh:true});
-          toast('Момент добавлен в сегодняшний день.');
+          toast(t('momentAdded'));
         }catch(error){btn.disabled=false;const msg=form.querySelector('[role=alert]');msg.hidden=false;msg.textContent=error.message;}
       };
     });
 }
 function dayActions(day) {
   const row=(key,name,symbol,cls='')=>'<button class="'+cls+'" data-act="'+key+'">'+icon(symbol)+name+'</button>';
-  sheet('Папка дня','<p>'+esc(day.title || formatDate(day.date))+'</p><div class="grid-list">'+
-    row('edit','Изменить день','pen')+row('export','Экспортировать день','download')+
-    (day.primary===false?row('primary','Сделать основной','check'):'')+row('delete','Удалить день','trash','danger')+'</div>',body=>{
+  sheet(t('folder'),'<p>'+esc(day.title || formatDate(day.date))+'</p><div class="grid-list">'+
+    row('edit',t('edit'),'pen')+row('export',t('export'),'download')+
+    (day.primary===false?row('primary',t('primary'),'check'):'')+row('delete',t('delete'),'trash','danger')+'</div>',body=>{
       body.querySelector('[data-act="edit"]').onclick=()=>edit(day);
       body.querySelector('[data-act="export"]').onclick=async event=>{
         const btn=event.currentTarget;btn.disabled=true;
-        try{await downloadDays([await getDay(day.id) || day],'NoLimit-'+day.date+'.zip');toast('Копия дня готова к скачиванию.');}
+        try{await downloadDays([await getDay(day.id) || day],'NoLimit-'+day.date+'.zip');toast(t('downloaded'));}
         catch(e){downloadError(e);}finally{btn.disabled=false;}
       };
       const promote=body.querySelector('[data-act="primary"]');
-      if(promote)promote.onclick=async()=>{try{await makePrimary(day.id);await go('archive');toast('Выбрана основная версия дня.');}catch(e){downloadError(e);}};
+      if(promote)promote.onclick=async()=>{try{await makePrimary(day.id);await go('archive');toast(t('promoted'));}catch(e){downloadError(e);}};
       body.querySelector('[data-act="delete"]').onclick=()=>confirmDelete(day);
     });
 }
 function confirmDelete(day){
-  sheet('Удалить день?','<p>Удалить запись «'+esc(day.title||'Запись дня')+'» за '+esc(formatDate(day.date))+' с этого устройства?</p>'+
-    '<div class="sheet-actions"><button class="secondary" data-no>Отмена</button><button class="primary delete-action" data-yes>Удалить день</button></div>',body=>{
+  sheet(t('deleteTitle'),'<p>'+esc(t('confirmDelete',{title:day.title||t('entry'),date:formatDate(day.date)}))+'</p>'+
+    '<div class="sheet-actions"><button class="secondary" data-no>'+t('cancel')+'</button><button class="primary delete-action" data-yes>'+t('delete')+'</button></div>',body=>{
       body.querySelector('[data-no]').onclick=closeSheet;
       body.querySelector('[data-yes]').onclick=async event=>{
         const btn=event.currentTarget;btn.disabled=true;
@@ -117,8 +124,8 @@ function confirmDelete(day){
           const removed=await removeDay(day.id);
           drafts.delete(day.id);
           await go('archive',{refresh:true});
-          toast('День удалён.',removed?{label:'Вернуть',run:async()=>{
-            await saveDay(removed);await go('archive',{refresh:true});toast('День восстановлен.');
+          toast(()=>t('removed'),removed?{label:()=>t('undo'),run:async()=>{
+            await saveDay(removed);await go('archive',{refresh:true});toast(t('restored'));
           }}:undefined);
         } catch(e){btn.disabled=false;downloadError(e);}
       };
@@ -137,7 +144,7 @@ function nav(active){
   }
 }
 function heading(title,subtitle){
-  document.title=title+' · NoLimit Дневник';find('page-title').textContent=title;
+  document.title=title+' · NoLimit '+t('journal');find('page-title').textContent=title;
   find('page-sub').textContent=subtitle;find('page-sub').hidden=!subtitle;
 }
 let leaving;
@@ -158,15 +165,15 @@ async function go(target,options={}){
   hidePanel(true);history[method]({},'','#'+key);
   await render(key,true);
 }
-async function render(key,focus) {
+async function render(key,focus,viewState) {
   const ticket=++generation;
   if(cleanup){cleanup();cleanup=null;}
   route=key;
   const [section,encoded]=key.split('/');
   const root=document.createElement('div');root.className='view-enter';find('view').replaceChildren(root);
   nav(section==='edit'?'today':section==='day'?(encoded?.startsWith('demo-')?'examples':'archive'):section);
-  if(screens[section])heading(screens[section][0],screens[section][3]);
-  else heading(section==='edit'?'Записать день':'Открытка дня','');
+  if(screens[section])heading(t(screens[section][0]),t(screens[section][3]));
+  else heading(section==='edit'?t('write'):t('postcard'),'');
   if(focus){window.scrollTo({top:0,behavior:'instant'});find('main').focus({preventScroll:true});}
   try {
     if(section==='day'||section==='edit'){
@@ -174,13 +181,13 @@ async function render(key,focus) {
       const sample=demos.find(day=>day.id===id);
       const day=sample || await getDay(id) || drafts.get(id);
       if(ticket!==generation)return;
-      if(!day){heading('Запись не найдена','Эта запись могла остаться в другом браузере или быть удалена.');root.innerHTML='<button class="primary">Открыть архив</button>';root.querySelector('button').onclick=()=>go('archive');return;}
+      if(!day){heading(t('missing'),t('missingHelp'));root.innerHTML='<button class="primary">'+t('openArchive')+'</button>';root.querySelector('button').onclick=()=>go('archive');return;}
       if(section==='edit'){
-        heading(day.status==='ready'?'Изменить день':'Записать день','Текст, фото и музыка в одной открытке.');
-        cleanup=mountEditor(root,day,ctx);
+        heading(day.status==='ready'?t('edit'):t('write'),t('editorIntro'));
+        cleanup=mountEditor(root,day,ctx,viewState);
       }else{
-        heading('Открытка дня',formatDate(day.date,{day:'numeric',month:'long',year:'numeric'}));
-        cleanup=mountPlayer(root,day,ctx);
+        heading(t('postcard'),formatDate(day.date,{day:'numeric',month:'long',year:'numeric'}));
+        cleanup=mountPlayer(root,day,ctx,viewState);
       }
     }else if(section==='examples'){
       cleanup=mountLibrary(root,[],true,ctx);
@@ -194,8 +201,8 @@ async function render(key,focus) {
     }
   }catch(error){
     if(ticket!==generation)return;
-    root.innerHTML='<section class="panel empty-state"><h2>Не удалось открыть раздел</h2><p></p><button class="secondary">Повторить</button></section>';
-    root.querySelector('p').textContent=error.message || 'Обнови страницу и попробуй ещё раз.';
+    root.innerHTML='<section class="panel empty-state"><h2>'+t('loadError')+'</h2><p></p><button class="secondary">'+t('retry')+'</button></section>';
+    root.querySelector('p').textContent=error.message || t('refresh');
     root.querySelector('button').onclick=()=>render(key,false);
   }
 }
@@ -209,13 +216,48 @@ function restoreLocation(){
     hidePanel(true);render(key,true);
   });
 }
+function localizeShell(){
+  document.documentElement.lang=getLanguage();
+  document.querySelector('meta[name="description"]').content=t('description');
+  find('skip').textContent=t('skip');
+  document.querySelector('.rail').setAttribute('aria-label',t('sidebar'));
+  document.querySelector('.wordmark-sub').textContent=t('journal');
+  document.querySelector('.phone-brand strong span').textContent=t('journal');
+  document.querySelector('.rail-label').textContent=t('today');
+  find('context-name').textContent=t('personal');
+  find('ctx-date').textContent=formatDate(localDate(),{month:'long',year:'numeric'});
+  find('about-label').textContent=t('about');
+  find('about').setAttribute('aria-label',t('about'));
+  find('sheet-close').setAttribute('aria-label',t('close'));
+  find('language-switch').setAttribute('aria-label',t('language'));
+  for(const button of find('language-switch').querySelectorAll('[data-language]')){
+    button.setAttribute('aria-pressed',String(button.dataset.language===getLanguage()));
+  }
+  for(const item of ['nav','dock']){
+    find(item).setAttribute('aria-label',t(item==='nav'?'sections':'navigation'));
+    find(item).innerHTML=Object.entries(screens).map(([key,[title,label,symbol]])=>
+      '<button type="button" class="'+(item==='nav'?'nav-item':'')+'" data-route="'+key+'">'+icon(symbol,21)+'<span>'+esc(t(item==='nav'?title:label))+'</span></button>').join('');
+  }
+}
 for(const item of ['nav','dock']){
-  find(item).innerHTML=Object.entries(screens).map(([key,[title,label,symbol]])=>
-    '<button type="button" class="'+(item==='nav'?'nav-item':'')+'" data-route="'+key+'">'+icon(symbol,21)+'<span>'+esc(item==='nav'?title:label)+'</span></button>').join('');
   find(item).onclick=e=>{const button=e.target.closest('[data-route]');if(button)go(button.dataset.route);};
 }
+find('language-switch').onclick=async event=>{
+  const next=event.target.closest('[data-language]')?.dataset.language;
+  if(!next)return;
+  const ticket=++requestNumber;
+  if(next===getLanguage() || !(await flushEditor()) || ticket!==requestNumber)return;
+  const viewState=cleanup?.getViewState?.();
+  setLanguage(next);
+  refreshDemos();
+  localizeShell();
+  refreshNotice();
+  forgetPanels();
+  await render(route,false,viewState);
+};
 find('skip').onclick=e=>{e.preventDefault();find('main').focus();};
-find('ctx-date').textContent=formatDate(localDate(),{month:'long',year:'numeric'});
+localizeShell();
+document.querySelector('.boot-status').textContent=t('loading');
 document.querySelector('.ctx-icon').innerHTML=icon('book',17);
 document.querySelector('.about-icon').innerHTML=icon('info',17);
 find('sheet-close').innerHTML=icon('close',18);
