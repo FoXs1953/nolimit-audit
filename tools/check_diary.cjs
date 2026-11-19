@@ -336,7 +336,11 @@ async function mixedGallery(browser,dir,errors) {
     assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     await page.getByRole('textbox',{name:'Текст дня'}).fill('Зелёный свет над рекой.');
     await page.locator('[data-ed-photos]').setInputFiles([path.join(media,'river.jpg'),videoPath]);
+    // Video probing is asynchronous. Wait for the editor to finish its
+    // metadata check before starting the separate user-interaction timeout.
     const picks=page.locator('[data-ed-select]');
+    await picks.nth(1).waitFor({state:'visible',timeout:20000});
+    await picks.nth(0).click();
     await picks.nth(1).click();
     await page.locator('[data-ed-photo-op="cover"]').click();
     assert.equal(await page.locator('.ed-crop').count(),0);
