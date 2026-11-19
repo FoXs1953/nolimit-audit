@@ -33,27 +33,45 @@ const cases=[
       const NativeAudio=window.Audio;
       window.Audio=class extends NativeAudio { constructor(...args){super(...args);window.__audio.push(this);} };
     });
-    await page.goto(new URL('#day/demo-leaves',origin).href,{waitUntil:'domcontentloaded'});
+    // Hold back the MP3 while the user moves to frame three. This host returns a
+    // complete 200 response even for Range requests, like the public static host.
+    const mp3=await context.request.get(new URL('diary/media/leaves.mp3',origin).href);
+    assert.ok(mp3.ok());
+    const mediaBytes=await mp3.body();
+    let sendTrack;
+    const gate=new Promise(resolve=>{sendTrack=resolve;});
+    await page.route('**/diary/media/leaves.mp3',async route=>{
+      await gate;
+      await route.fulfill({status:200,contentType:'audio/mpeg',body:mediaBytes});
+    });
+    await page.goto(new URL('#day/demo-leaves',origin).href,{waitUntil:'commit'});
     const card=k=>page.locator('[data-card="'+k+'"]');
     await card('hero-play').waitFor();
     const series=[];
     for(const [lang,play,lastFrame,textLabel,title] of cases){
       await page.locator('[data-language="'+lang+'"]').click();
-      await page.getByRole('button',{name:play,exact:true}).waitFor();
       await page.getByRole('heading',{name:title,exact:true}).waitFor();
       if(lang==='ru'){
         await card('next').click();
         await card('next').click();
         await card('mute').click();
+        assert.equal(await page.evaluate(()=>window.__audio.at(-1).readyState),0);
+        sendTrack();
       }
+      await page.getByRole('button',{name:play,exact:true}).waitFor();
       assert.equal(await card('counter').textContent(),lastFrame);
       assert.equal(await card('mute').getAttribute('aria-pressed'),'true');
+      const target=await page.locator('.diary-card').evaluate(el=>
+        2*parseFloat(el.style.getPropertyValue('--day-duration'))/1000);
       await card('hero-play').click();
-      await page.waitForFunction(()=>{
+      await page.waitForFunction(start=>{
         const audio=window.__audio.at(-1);
         if (audio?.error) throw Error('Demo playback error '+audio.error.code+': '+audio.error.message);
-        return audio && audio.currentTime>0 && !audio.paused;
-      });
+        return audio && !audio.paused && !audio.seeking && start<audio.duration && audio.currentTime>=start;
+      },target,{timeout:6000});
+      const startedAt=await page.evaluate(()=>window.__audio.at(-1).currentTime);
+      assert.ok(startedAt-target<3,'Playback starts within the selected frame');
+      await page.waitForFunction(start=>window.__audio.at(-1).currentTime>=start+.15,startedAt,{timeout:2500});
       const visual=await page.locator('.diary-card').evaluate(el=>({
         animation:getComputedStyle(el.querySelector('[data-card=photo]')).animationName,
         paper:el.style.getPropertyValue('--day-paper'),motion:el.dataset.motion

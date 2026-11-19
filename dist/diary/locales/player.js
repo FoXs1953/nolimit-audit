@@ -2,6 +2,7 @@ import {translator} from '../i18n.js';
 
 export const playerText=translator({
   zoom:['Рассмотреть открытку целиком','Ашықхатты толық көру','View the whole postcard'],
+  loadingMusic:['Загружаем музыку…','Музыка жүктелуде…','Loading music…'],
   playback:['Воспроизведение','Ойнату','Playback'],
   chooseFrame:['Выбрать кадр','Кадрды таңдау','Choose a frame'],
   previous:['Предыдущее фото','Алдыңғы фото','Previous photo'],

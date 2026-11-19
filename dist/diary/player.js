@@ -30,9 +30,11 @@ export function mountPlayer(root, day, ctx, viewState={}) {
   const html=(key,values)=>esc(t(key,values));
   const song = music.kind === 'link' ? webAddress(music.url) : '';
   const audioSrc = music.kind === 'file' ? urlFor(music) : '';
-  const audio = audioSrc ? new Audio(audioSrc) : null;
+  let preparingTrack=localMedia.test(audioSrc);
+  const audio = audioSrc ? new Audio() : null;
   if (audio) {
     audio.preload='metadata';
+    if (!preparingTrack) audio.src=audioSrc;
     audio.volume=.83;
     audio.muted=Boolean(viewState?.muted);
   }
@@ -44,12 +46,14 @@ export function mountPlayer(root, day, ctx, viewState={}) {
     (note?'<small>'+esc(note)+'</small>':'')+'</span><span class="card-row-next">'+icon('chevron',15)+'</span></button>';
   let position=clamp(Number.isInteger(viewState?.position)?viewState.position:0,0,Math.max(0,photos.length-1));
   let remaining=Number.isFinite(viewState?.remaining)?clamp(viewState.remaining,50,recipe.interval):recipe.interval;
-  let resumeTime=Number.isFinite(viewState?.time)?viewState.time:0;
+  let resumeTime=Number.isFinite(viewState?.time) && viewState.time>0 ? viewState.time : null;
   let playing=false, stopTimer=0, nextAt=0, pendingPlay=0, utterance=null, destroyed=false;
-  audio?.addEventListener('loadedmetadata',()=>{
-    if (resumeTime>0 && Number.isFinite(audio.duration)) audio.currentTime=clamp(resumeTime,0,Math.max(0,audio.duration-.05));
-    resumeTime=0;
-  },opts);
+  function applySeek() {
+    if (resumeTime===null || !audio || !Number.isFinite(audio.duration)) return;
+    audio.currentTime=clamp(resumeTime,0,Math.max(0,audio.duration-.05));
+    resumeTime=null;
+  }
+  audio?.addEventListener('loadedmetadata',applySeek,opts);
   let finished=false, visualDone=false, audioUnavailable=false;
   root.innerHTML='<div class="ab-view ab-audit diary-card">'+
     '<section class="ab-hero" data-card="hero"><div class="ab-hero-copy">'+
@@ -85,10 +89,11 @@ export function mountPlayer(root, day, ctx, viewState={}) {
   function notice(text='') { if (!destroyed) el('status').textContent=text; }
   function buttons() {
     if (destroyed) return;
-    const label=playing?t('pause'):t('animate');
+    const label=preparingTrack?t('loadingMusic'):playing?t('pause'):t('animate');
+    el('hero-play').disabled=el('play').disabled=preparingTrack;
     el('hero-play').innerHTML=icon(playing?'pause':'play',17)+'<span>'+esc(label)+'</span>';
     el('play').innerHTML=icon(playing?'pause':'play',18);
-    el('play').setAttribute('aria-label',playing?t('pause'):t('play'));
+    el('play').setAttribute('aria-label',preparingTrack?t('loadingMusic'):playing?t('pause'):t('play'));
     el('hero-play').setAttribute('aria-pressed',String(playing));
     el('play').setAttribute('aria-pressed',String(playing));
     if (audio) {
@@ -150,8 +155,11 @@ export function mountPlayer(root, day, ctx, viewState={}) {
   function locate(index) {
     if (!photos.length) return;
     finished=false;visualDone=false;position=clamp(index,0,photos.length-1);
-    remaining=recipe.interval;resumeTime=0;
-    if (audio && Number.isFinite(audio.duration)) audio.currentTime=Math.max(0,Math.min(audio.duration-.05,position*recipe.interval/1000));
+    remaining=recipe.interval;
+    if (audio) {
+      resumeTime=position*recipe.interval/1000;
+      applySeek();
+    }
     notice(); paint(); advance();
   }
   function toggle() {
@@ -160,7 +168,7 @@ export function mountPlayer(root, day, ctx, viewState={}) {
     if (finished) locate(0);
     notice(); stopSpeech(); playing=true; buttons(); advance();
     if (audio) {
-      if (audio.ended || audio.currentTime>=audio.duration-.08) audio.currentTime=0;
+      if (audio.ended) audio.currentTime=0;
       const request=++pendingPlay;
       audioUnavailable=false;
       audio.play().catch(()=>{
@@ -246,14 +254,30 @@ export function mountPlayer(root, day, ctx, viewState={}) {
   document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();stopSpeech();}},opts);
   document.querySelector('dialog')?.addEventListener('close',stopSpeech,opts);
   env.addEventListener('pagehide',()=>{pause();stopSpeech();},opts);
+  async function loadBundledTrack() {
+    // A full blob remains seekable on hosts that serve the entire MP3 for a Range request.
+    try {
+      const response=await fetch(audioSrc,{signal:own.signal});
+      if (!response.ok) throw Error();
+      const blob=await response.blob();
+      if (destroyed) return;
+      audio.src=urlFor({blob});
+    } catch {
+      if (destroyed) return;
+      audio.src=audioSrc;
+    }
+    preparingTrack=false;
+    buttons();
+  }
   paint();buttons();
+  if (preparingTrack) loadBundledTrack();
   const cleanup=()=>{
     pause();destroyed=true;own.abort();stopSpeech();
     if(audio){audio.removeAttribute('src');audio.load();}
     urls.forEach(url=>URL.revokeObjectURL(url));
   };
   cleanup.getViewState=()=>({
-    position,muted:audio?.muted || false,time:resumeTime || audio?.currentTime || 0,
+    position,muted:audio?.muted || false,time:resumeTime ?? audio?.currentTime ?? 0,
     remaining:playing?clamp(nextAt-performance.now(),50,recipe.interval):remaining
   });
   return cleanup;
