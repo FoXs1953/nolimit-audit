@@ -1,6 +1,0 @@
-.git
-dist
-build
-.runtime
-__pycache__
-*.pyc
