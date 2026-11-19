@@ -9,10 +9,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - engine: chromium
-            runner: ubuntu-latest
           - engine: webkit
-            runner: macos-15
+            runner: macos-26
     env:
       ENGINE: ${{ matrix.engine }}
     steps:
