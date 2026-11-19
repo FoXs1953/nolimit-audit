@@ -1,3 +1,6 @@
+import {t} from './locales/shell.js';
+export {formatDate} from './i18n.js';
+
 const symbols = {
     pen:'<path d="m4 16 11-11 4 4L8 20l-5 1 1-5Zm9-9 4 4"/><path d="M13 21h8"/>',
     camera:'<path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3"/>',
@@ -45,11 +48,6 @@ export function localDate() {
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 }
 
-export function formatDate(value, options = {day:'numeric', month:'long'}) {
-  const date = new Date(value + 'T12:00:00');
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ru-RU', options).format(date);
-}
-
 export function dayRow({title, note, symbol, action, trailing='', image=''}) {
   const art = image ? '<img alt="" src="' + esc(image) + '">' : icon(symbol);
   return '<button type="button" class="ab-row" data-action="' + esc(action) + '">' +
@@ -59,17 +57,26 @@ export function dayRow({title, note, symbol, action, trailing='', image=''}) {
 }
 
 let toastTimer;
+let updateNotice;
+export function refreshNotice() {
+  if (updateNotice) updateNotice();
+  else document.getElementById('notice').hidden = true;
+}
 export function toast(message, action) {
   const notice = document.getElementById('notice');
   clearTimeout(toastTimer);
-  notice.replaceChildren(document.createTextNode(message));
+  const label = value => typeof value === 'function' ? value() : value;
+  const text = document.createTextNode(label(message));
+  notice.replaceChildren(text);
+  updateNotice = null;
   if (action) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = action.label;
+    button.textContent = label(action.label);
+    updateNotice = () => { text.data = label(message); button.textContent = label(action.label); };
     button.onclick = async () => {
       button.disabled = true;
-      try { await action.run(); } catch (error) { toast(error.message || 'Повтори действие.'); }
+      try { await action.run(); } catch (error) { toast(error.message || t('actionError')); }
     };
     notice.append(button);
   }
@@ -83,6 +90,7 @@ let activePanel;
 let closeTimer;
 let panelCounter = 0;
 const panels = new Map();
+export function forgetPanels() { panels.clear(); }
 export function sheet(title, html, onMount) {
   const key = ++panelCounter;
   if (!dialog.open) trigger = document.activeElement;

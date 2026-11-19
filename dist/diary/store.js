@@ -1,5 +1,9 @@
 // Device-local diary. Writes commit as one transaction, including all date/version changes.
 import { zipSync, unzipSync, strToU8, strFromU8 } from './vendor/fflate-0.8.2.js';
+import { translator } from './i18n.js';
+import { messages } from './locales/store.js';
+
+const t = translator(messages);
 
 const DB_NAME = 'nolimit-arttech-diary';
 const STORE = 'days';
@@ -23,15 +27,15 @@ let connecting;
 function connection() {
   if (connecting) return connecting;
   const opening = new Promise((resolve, reject) => {
-    if (!globalThis.indexedDB) { reject(bad('Хранилище браузера недоступно. Откройте дневник в обычной вкладке.')); return; }
+    if (!globalThis.indexedDB) { reject(bad(t('storageUnavailable'))); return; }
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
       const db = req.result;
       const days = db.createObjectStore(STORE, {keyPath:'id'});
       days.createIndex('date', 'date');
     };
-    req.onblocked = () => { reject(bad('Закройте другие вкладки дневника и попробуйте ещё раз.')); };
-    req.onerror = () => reject(req.error || bad('Не удалось открыть дневник.'));
+    req.onblocked = () => { reject(bad(t('otherTabs'))); };
+    req.onerror = () => reject(bad(t('openError')));
     req.onsuccess = () => {
       const db = req.result;
       db.onversionchange = () => { db.close(); connecting = undefined; };
@@ -48,7 +52,7 @@ async function read(method, ...args) {
   return new Promise((resolve,reject) => {
     const req = db.transaction(STORE).objectStore(STORE)[method](...args);
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(bad(t('openError')));
   });
 }
 
@@ -72,7 +76,7 @@ async function write(fn, commit = true) {
     tx.oncomplete = () => resolve(result);
     tx.onabort = () => {
       const e = err || tx.error;
-      reject(e?.name === 'QuotaExceededError' ? bad('На устройстве мало места. Скачайте копию сохранённых дней или выберите меньший файл.') : e || bad('Не удалось сохранить изменения.'));
+      reject(e?.name === 'QuotaExceededError' ? bad(t('lowStorage')) : err || bad(t('saveError')));
     };
   });
 }
@@ -92,19 +96,19 @@ function validUrl(value) {
   } catch { return false; }
 }
 function safeTree(value, depth=0, budget={n:0}) {
-  if (++budget.n > 55000 || depth > 14) throw bad('Слишком сложные данные дня.');
+  if (++budget.n > 55000 || depth > 14) throw bad(t('complexData'));
   if (value == null || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return;
   if (typeof value === 'string' && value.length <= 160000) return;
   if (value instanceof Blob) return;
   if (Array.isArray(value) && value.length <= 4000) { for (const item of value) safeTree(item,depth+1,budget); return; }
   if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype && Object.keys(value).length <= 250) {
     for (const [key,item] of Object.entries(value)) {
-      if (['__proto__','constructor','prototype'].includes(key) || key.length > 120) throw bad('Некорректное поле дневника.');
+      if (['__proto__','constructor','prototype'].includes(key) || key.length > 120) throw bad(t('invalidField'));
       safeTree(item,depth+1,budget);
     }
     return;
   }
-  throw bad('Некорректное содержимое дневника.');
+  throw bad(t('invalidContents'));
 }
 function mediaType(raw, name, kind) {
   let mime = String(raw || '').toLowerCase().split(';')[0].trim();
@@ -113,40 +117,40 @@ function mediaType(raw, name, kind) {
     wav:'audio/wav',mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',ogg:'audio/ogg',flac:'audio/flac',webm:'audio/webm'
   })[String(name).split('.').pop().toLowerCase()];
   const allowed = kind === 'photo' ? imageTypes : audioTypes;
-  if (!allowed.has(mime)) throw bad(kind === 'photo' ? 'Неподдерживаемый формат фотографии.' : 'Неподдерживаемый формат аудио.');
+  if (!allowed.has(mime)) throw bad(kind === 'photo' ? t('imageFormat') : t('audioFormat'));
   return mime;
 }
 function checkAsset(asset, kind) {
-  if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw bad('Медиафайл не найден.');
-  if (typeof asset.name !== 'string' || !asset.name.trim() || asset.name.length>1000) throw bad('Некорректное название медиафайла.');
+  if (!asset || typeof asset !== 'object' || Array.isArray(asset)) throw bad(t('mediaMissing'));
+  if (typeof asset.name !== 'string' || !asset.name.trim() || asset.name.length>1000) throw bad(t('mediaName'));
   if (asset.blob instanceof Blob) {
-    if (!asset.blob.size || asset.blob.size > (kind === 'photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad('Медиафайл пуст или слишком велик.');
+    if (!asset.blob.size || asset.blob.size > (kind === 'photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('mediaSize'));
     mediaType(asset.blob.type,asset.name || asset.src,kind);
-  } else if (!DEMO_PATH.test(asset.src || '')) { throw bad('Отсутствует локальный медиафайл.'); }
-  if (asset.src != null && !DEMO_PATH.test(asset.src)) throw bad('Некорректный адрес медиафайла.');
+  } else if (!DEMO_PATH.test(asset.src || '')) { throw bad(t('localFileMissing')); }
+  if (asset.src != null && !DEMO_PATH.test(asset.src)) throw bad(t('mediaUrl'));
 }
 function checkRecord(row, partial=false) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) throw bad('Некорректная запись дня.');
-  if ((!partial || row.date != null) && !validateDate(row.date)) throw bad('Некорректная дата дня.');
-  if (!partial && !validId(row.id)) throw bad('Некорректный идентификатор дня.');
-  if ((!partial || row.status != null) && !['draft','ready'].includes(row.status)) throw bad('Неизвестный статус дня.');
+  if (!row || typeof row !== 'object' || Array.isArray(row)) throw bad(t('invalidEntry'));
+  if ((!partial || row.date != null) && !validateDate(row.date)) throw bad(t('invalidDate'));
+  if (!partial && !validId(row.id)) throw bad(t('invalidId'));
+  if ((!partial || row.status != null) && !['draft','ready'].includes(row.status)) throw bad(t('unknownStatus'));
   for (const key of ['text','title','caption','titleOverride','captionOverride','linkDraft']) {
-    if (row[key] != null && typeof row[key] !== 'string') throw bad('Некорректное текстовое поле.');
+    if (row[key] != null && typeof row[key] !== 'string') throw bad(t('textField'));
   }
   if (row.photos != null) {
-    if (!Array.isArray(row.photos) || row.photos.length > 6) throw bad('В одном дне может быть до шести фотографий.');
+    if (!Array.isArray(row.photos) || row.photos.length > 6) throw bad(t('photoLimit'));
     for (const photo of row.photos) checkAsset(photo,'photo');
   }
   if (row.music != null) {
     if (row.music.kind === 'file') checkAsset(row.music,'audio');
-    else if (row.music.kind !== 'link' || !validUrl(row.music.url)) throw bad('Для песни нужна корректная HTTPS-ссылка.');
+    else if (row.music.kind !== 'link' || !validUrl(row.music.url)) throw bad(t('musicUrl'));
   }
   if (row.status === 'ready' && (!row.text?.trim() || !row.photos?.length || !row.music)) {
-    throw bad('В готовом дне должны быть запись, фотография и песня.');
+    throw bad(t('requiredContent'));
   }
-  if (row.moments != null && (!Array.isArray(row.moments) || row.moments.some(m => !m || typeof m.text !== 'string'))) throw bad('Некорректные заметки дня.');
+  if (row.moments != null && (!Array.isArray(row.moments) || row.moments.some(m => !m || typeof m.text !== 'string'))) throw bad(t('invalidMoments'));
   if (row.pendingEdit != null) {
-    if (partial) throw bad('Некорректная вложенность версий.');
+    if (partial) throw bad(t('nestedVersions'));
     checkRecord(row.pendingEdit,true);
   }
 }
@@ -185,17 +189,17 @@ function bytesOf(blob) {
 }
 async function localAsset(asset, kind) {
   if (asset.blob instanceof Blob) return asset.blob;
-  if (!DEMO_PATH.test(asset.src || '')) throw bad('Один из файлов недоступен.');
+  if (!DEMO_PATH.test(asset.src || '')) throw bad(t('unavailableFile'));
   const src=asset.src.replace(/^(?:\.\/|\/)/,'');
   let promise = demoFiles.get(src);
   if (!promise) {
     promise = (async () => {
       const url=new URL(src,document.baseURI);
-      const response=await fetch(url);
-      if (!response.ok) throw bad('Не удалось загрузить исходный файл. Откройте пример при подключённой сети.');
+      const response=await fetch(url).catch(()=>null);
+      if (!response?.ok) throw bad(t('sourceFile'));
       const blob=await response.blob();
       const type=mediaType(blob.type,src,kind);
-      if (!blob.size || blob.size > (kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad('Медиафайл недоступен.');
+      if (!blob.size || blob.size > (kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('mediaUnavailable'));
       return blob.type === type ? blob : blob.slice(0,blob.size,type);
     })();
     demoFiles.set(src,promise);
@@ -204,6 +208,8 @@ async function localAsset(asset, kind) {
   return promise;
 }
 async function mapMedia(row, transform) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) throw bad(t('invalidEntry'));
+  if (row.photos != null && !Array.isArray(row.photos)) throw bad(t('invalidEntry'));
   const out={...row};
   if (out.photos) out.photos=await Promise.all(out.photos.map(photo=>transform(photo,'photo')));
   if (out.music?.kind === 'file') out.music=await transform(out.music,'audio');
@@ -290,7 +296,7 @@ export async function removeDay(id) {
 export async function makePrimary(id) {
   return decodeDay(await write((rows,store)=>{
     const current=rows.get(id);
-    if (!current) throw bad('Запись уже удалена.');
+    if (!current) throw bad(t('alreadyDeleted'));
     for (const record of rows.values()) if (record.date===current.date && record.primary !== (record.id===id)) {
       record.primary=record.id===id;
       store.put(record);
@@ -308,16 +314,16 @@ function extension(mime) {
   return mime.split('/').pop().replace(/^x-/,'');
 }
 function folderName(record,index) {
-  const short=String(record.title || (record.status==='draft'?'Черновик':'День')).normalize('NFC').replace(/[^\p{L}\p{N} -]+/gu,'').trim().slice(0,44) || 'День';
+  const short=String(record.title || (record.status==='draft'?t('draft'):t('day'))).normalize('NFC').replace(/[^\p{L}\p{N} -]+/gu,'').trim().slice(0,44) || t('day');
   return 'days/'+record.date+'-'+String(index+1).padStart(4,'0')+'-'+short;
 }
 export async function exportZip(records) {
-  if (!Array.isArray(records) || records.length>MAX_DAYS) throw bad('Для одной копии доступно до 1500 дней. Экспортируйте дни отдельно.');
+  if (!Array.isArray(records) || records.length>MAX_DAYS) throw bad(t('backupDays'));
   const files=Object.create(null), days=[];
   let total=0, entries=0;
   function append(path,bytes) {
     total+=bytes.byteLength;
-    if (++entries>MAX_FILES || total+entries*256>MAX_ARCHIVE) throw bad('Копия слишком велика. Экспортируйте нужные дни отдельно.');
+    if (++entries>MAX_FILES || total+entries*256>MAX_ARCHIVE) throw bad(t('backupSize'));
     files[path]=bytes;
   }
   for (const [index,input] of records.entries()) {
@@ -341,7 +347,7 @@ export async function exportZip(records) {
     });
     delete out._contentHash;
     const json=strToU8(JSON.stringify(out));
-    if (json.length>MAX_JSON) throw bad('Текст одного дня слишком велик для экспорта.');
+    if (json.length>MAX_JSON) throw bad(t('textSize'));
     const path=folder+'/day.json';
     append(path,json);
     days.push({id:record.id,date:record.date,title:record.title || '',path});
@@ -362,7 +368,7 @@ function crc32(bytes) {
   return (c^0xffffffff)>>>0;
 }
 function indexZip(bytes) {
-  const error=()=>bad('Архив повреждён или имеет неподдерживаемый формат.');
+  const error=()=>bad(t('invalidArchive'));
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
   const end=bytes.length-22;
   // The app creates single-volume, ordinary ZIP files with no archive comment or encryption.
@@ -397,10 +403,10 @@ function indexZip(bytes) {
 }
 function parseJson(bytes) {
   try { return JSON.parse(strFromU8(bytes)); }
-  catch { throw bad('Текст в резервной копии повреждён.'); }
+  catch { throw bad(t('backupText')); }
 }
 export async function inspectZip(file) {
-  if (!(file instanceof Blob) || !file.size || file.size>MAX_ARCHIVE) throw bad('Выберите ZIP-копию дневника размером до 240 МБ.');
+  if (!(file instanceof Blob) || !file.size || file.size>MAX_ARCHIVE) throw bad(t('chooseZip'));
   const buffer=new Uint8Array(await file.arrayBuffer());
   let files, index;
   try {
@@ -408,26 +414,26 @@ export async function inspectZip(file) {
     files=unzipSync(buffer);
     for (const [path,entry] of index) {
       const bytes=files[path];
-      if (!bytes || bytes.length!==entry.size || crc32(bytes)!==entry.crc) throw bad('Повреждены файлы резервной копии.');
+      if (!bytes || bytes.length!==entry.size || crc32(bytes)!==entry.crc) throw bad(t('damagedFiles'));
     }
-  } catch (e) { throw bad('Не удалось открыть ZIP-копию дневника. Проверьте, что выбран исходный файл экспорта.'); }
+  } catch (e) { throw bad(t('openZip')); }
   const manifest=parseJson(files['manifest.json']);
-  if (!manifest || manifest.format!=='nolimit-diary' || manifest.version!==1 || !Array.isArray(manifest.days) || manifest.days.length>MAX_DAYS) throw bad('Для восстановления нужна резервная копия NoLimit Дневник версии 1.');
+  if (!manifest || manifest.format!=='nolimit-diary' || manifest.version!==1 || !Array.isArray(manifest.days) || manifest.days.length>MAX_DAYS) throw bad(t('backupVersion'));
   const records=[], ids=new Set(), seenPaths=new Set(['manifest.json']);
   for (const item of manifest.days) {
     if (!item || !validId(item.id) || ids.has(item.id) || !validateDate(item.date) || typeof item.path!=='string' ||
-      !item.path.startsWith('days/'+item.date+'-') || !item.path.endsWith('/day.json') || !Object.hasOwn(files,item.path) || seenPaths.has(item.path)) throw bad('Некорректный список дней в копии.');
+      !item.path.startsWith('days/'+item.date+'-') || !item.path.endsWith('/day.json') || !Object.hasOwn(files,item.path) || seenPaths.has(item.path)) throw bad(t('invalidDays'));
     seenPaths.add(item.path); ids.add(item.id);
     const raw=parseJson(files[item.path]);
     safeTree(raw);
-    if (raw.id!==item.id || raw.date!==item.date) throw bad('Запись не соответствует списку дней.');
+    if (raw?.id!==item.id || raw?.date!==item.date) throw bad(t('entryMismatch'));
     const folder=item.path.slice(0,-'day.json'.length);
     const assets=new Map();
     const record=await mapMedia(raw,async (asset,kind)=>{
-      if (!asset || typeof asset.archiveFile!=='string' || !/^media\/[\da-z.-]+$/.test(asset.archiveFile) || asset.src || asset.blob) throw bad('В копии отсутствует вложение дня.');
+      if (!asset || typeof asset.archiveFile!=='string' || !/^media\/[\da-z.-]+$/.test(asset.archiveFile) || asset.src || asset.blob) throw bad(t('attachmentMissing'));
       const full=folder+asset.archiveFile;
       const bytes=files[full];
-      if (!bytes || !bytes.length || bytes.length>(kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad('Не удалось восстановить вложение из копии.');
+      if (!bytes || !bytes.length || bytes.length>(kind==='photo' ? MAX_IMAGE : MAX_AUDIO)) throw bad(t('attachmentRestore'));
       seenPaths.add(full);
       const mime=mediaType(asset.mediaType,full,kind);
       const key=full+':'+mime;
@@ -441,11 +447,11 @@ export async function inspectZip(file) {
     row._contentHash=await contentHash(row);
     records.push(row);
   }
-  if (seenPaths.size!==index.size) throw bad('В резервной копии найдены лишние файлы.');
+  if (seenPaths.size!==index.size) throw bad(t('unexpectedFiles'));
   return records;
 }
 async function merge(records, commit) {
-  if (!Array.isArray(records) || records.length>MAX_DAYS) throw bad('Слишком много записей.');
+  if (!Array.isArray(records) || records.length>MAX_DAYS) throw bad(t('tooManyEntries'));
   const validated=[];
   for (const input of records) {
     const row=normalizeRecord(input);
