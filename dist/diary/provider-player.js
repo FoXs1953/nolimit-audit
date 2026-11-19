@@ -88,13 +88,14 @@ function spotifyEmbed(container,link,events,title) {
       const frame=container.querySelector('iframe');
       if(frame) frame.title=title || 'Spotify';
       controller.addListener('ready',()=>events.ready());
-      controller.addListener('playback_started',()=>events.state('playing'));
+      // Spotify sometimes acknowledges a play command before WebKit refuses
+      // audio at position zero. Drive the postcard from its actual media clock.
       controller.addListener('playback_update',({data})=>{
         time=(Number(data.position) || 0)/1000;
         duration=(Number(data.duration) || 0)/1000;
         if (data.isBuffering) events.state('buffering');
-        else if (!data.isPaused) events.state('playing');
-        else events.state(duration && time>=duration-.25 ? 'ended' : 'paused');
+        else if (data.isPaused) events.state(duration && time>=duration-.25 ? 'ended' : 'paused');
+        else if (time>0) events.state('playing');
       });
     });
   }).catch(()=>{if(!disposed) events.error('unavailable');});
@@ -124,9 +125,11 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
     if (destroyed) return;
     clearTimeout(deadline);requested=false;
     failed=reason!=='blocked';
+    if (link.provider==='spotify' && reason==='blocked') lastState='paused';
     onError?.(reason,code);
   }
   function playReady() {
+    lastState='';
     watch('blocked',10000);
     player.play();
   }
@@ -150,6 +153,12 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
         if (state==='playing') {
           if(container.closest('dialog:not([open])')) {player.pause();return;}
           clearTimeout(deadline);failed=false;requested=false;started=true;
+        } else if (state==='paused' && link.provider==='spotify' && ready && requested) {
+          // A brief paused update is possible during a successful start. Give
+          // the next clock update a moment to confirm playback before offering native Play.
+          if (lastState!=='waiting-for-native-play') watch('blocked',1100);
+          lastState='waiting-for-native-play';
+          return;
         } else if (state==='paused' && !started) return;
         else if (state==='buffering' && requested && state!==lastState) watch('unavailable',18000);
         if (state===lastState) return;
@@ -170,6 +179,7 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
       else watch('unavailable',18000);
     },
     pause() {
+      const cancellingSpotifyStart=link.provider==='spotify' && requested;
       requested=false;
       clearTimeout(deadline);
       if (ready) player.pause();
@@ -177,6 +187,9 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
         // Even a native iframe which did not establish its JS connection
         // may have been started through its own controls.
         generation++;player?.destroy();player=null;failed=true;
+      }
+      if (cancellingSpotifyStart) {
+        lastState='paused';onState?.('paused');
       }
     },
     setMuted(value){muted=Boolean(value);if (ready) player.setMuted(muted);},
