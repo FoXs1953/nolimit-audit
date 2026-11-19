@@ -5,6 +5,8 @@ export function mountHome(root, days, ctx) {
   const date = localDate();
   const entry = days.find(day => day.date === date && day.primary !== false);
   const hasDraft = entry && (entry.status !== 'ready' || entry.pendingEdit);
+  const personalPhoto = (entry?.pendingEdit || entry)?.photos?.[0];
+  const personalUrl = personalPhoto?.blob ? URL.createObjectURL(personalPhoto.blob) : personalPhoto?.src;
   const action = entry ? hasDraft ? 'Продолжить запись' : 'Открыть мой день' : 'Записать день';
   const recent = days.filter(day => day.status === 'ready' && day.primary !== false)
     .sort((a,b) => b.date.localeCompare(a.date))[0];
@@ -41,8 +43,8 @@ export function mountHome(root, days, ctx) {
   }
   function paint() {
     const day = demos[index];
-    find('[data-cover]').src = day.photos[0].src;
-    find('[data-cover-label]').textContent = formatDate(day.date);
+    find('[data-cover]').src = personalUrl || day.photos[0].src;
+    find('[data-cover-label]').textContent = formatDate(personalUrl ? entry.date : day.date);
     find('[data-open]').textContent = day.title;
     find('[data-count]').textContent = (index + 1) + ' из ' + demos.length;
     const slider = find('[data-slide]');
@@ -79,5 +81,8 @@ export function mountHome(root, days, ctx) {
   const observer = new MutationObserver(() => {if(dialog.open)stop();});
   observer.observe(dialog,{attributes:true,attributeFilter:['open']});
   paint();
-  return () => { stop(); observer.disconnect(); document.removeEventListener('visibilitychange',onVisibility); };
+  return () => {
+    stop(); observer.disconnect(); document.removeEventListener('visibilitychange',onVisibility);
+    if (personalUrl?.startsWith('blob:')) URL.revokeObjectURL(personalUrl);
+  };
 }

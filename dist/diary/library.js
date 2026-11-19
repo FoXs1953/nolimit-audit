@@ -67,13 +67,15 @@ export function mountLibrary(root, records, examples, ctx) {
         '<span class="library-copy"><small>' + esc(formatDate(day.date)) +
         (day.status !== 'ready' ? ' · Черновик' : '') + '</small><strong>' + esc(label(day)) +
         '</strong><span>'+esc(day.music?.name || 'Продолжить запись')+'</span></span><i>'+icon('chevron',17)+'</i></button>'+
+        (!examples && day.status!=='ready'?'<button class="versions-link" data-draft="'+esc(day.id)+'">Действия с черновиком</button>':'') +
         (!examples && copies>1?'<button class="versions-link" data-versions="'+esc(day.date)+'">Версии дня · '+copies+'</button>':'') + '</article>';
     }).join('');
   }
   grid.onclick = event => {
-    const button = event.target.closest('[data-id],[data-versions]');
+    const button = event.target.closest('[data-id],[data-versions],[data-draft]');
     if(!button)return;
     if(button.dataset.versions)showVersions(button.dataset.versions);
+    else if(button.dataset.draft)ctx.dayActions(filtered.find(day=>day.id===button.dataset.draft));
     else open(filtered.find(day=>day.id===button.dataset.id));
   };
   search?.addEventListener('input',paint); month?.addEventListener('change',paint);
