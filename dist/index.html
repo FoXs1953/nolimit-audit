@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f6f8">
+<title>NoLimit Audit · Ход аудита</title>
+<meta name="description" content="Интерактивная демонстрация финансового аудита NoLimit для GENESIS.EXE.">
+<link rel="icon" href="brand.svg" type="image/svg+xml">
+<link rel="stylesheet" href="base.css"><link rel="stylesheet" href="ab.css"><link rel="stylesheet" href="dp.css"><link rel="stylesheet" href="pr.css">
+<link rel="stylesheet" href="lab.css">
+<script src="data/release.js" defer></script><script src="shell.js" defer></script><script src="lab.js" defer></script><script src="ab.js" defer></script><script src="dp.js" defer></script><script src="pr.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">К содержимому</a>
+<div class="workspace">
+<aside class="rail" aria-label="Боковая панель">
+ <div class="wordmark"><img src="brand.svg" alt="" width="40" height="40"><span>NoLimit<span class="wordmark-sub">Audit</span></span></div>
+ <div class="rail-label">Рабочее пространство</div>
+ <nav id="nav" aria-label="Экраны аудита"></nav>
+ <div class="rail-foot"><div class="team-symbol" aria-hidden="true">NL</div><div><strong>NoLimit</strong><small>GENESIS.EXE · FinTech</small></div></div>
+</aside>
+<div class="surface">
+ <header class="topbar"><div class="phone-brand"><img width="28" height="28" src="brand.svg" alt=""><strong>NoLimit <span>Audit</span></strong></div><div class="context"><span class="ctx-icon" aria-hidden="true"></span><span>Компания «Маяк»</span><i>/</i><span>Октябрь 2026</span></div><button type="button" class="about" id="about"><span class="about-icon"></span><span>О демо</span></button></header>
+ <main id="main" tabindex="-1"><div class="heading"><h1 id="page-title">Ход аудита</h1><p id="page-sub"></p></div><div id="view"></div></main>
+</div></div>
+<nav id="dock" class="dock" aria-label="Основная навигация"></nav>
+<dialog id="sheet" aria-labelledby="sheet-title">
+ <div class="sheet-box"><div class="grab" aria-hidden="true"></div><header class="sheet-head"><h2 id="sheet-title"></h2><button id="sheet-close" type="button" class="icon-button close" aria-label="Закрыть"></button></header><div id="sheet-body" class="sheet-body"></div></div>
+</dialog>
+</body></html>

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/trajectory.json",
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "action": {
+      "description": "Exact submitted JSON, including invalid inputs; null is also used on timeout or closed input."
+    },
+    "observation": {
+      "$ref": "step.json#/$defs/observation"
+    },
+    "reward": {
+      "$ref": "common.json#/$defs/reward"
+    },
+    "terminated": {
+      "type": "boolean"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "episode_id",
+    "step",
+    "action",
+    "observation",
+    "reward",
+    "terminated",
+    "truncated"
+  ],
+  "additionalProperties": false
+}

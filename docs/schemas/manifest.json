@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/manifest.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "generator_version": {
+      "const": "1.0.0"
+    },
+    "episode_id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "company": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "base_currency": {
+      "$ref": "common.json#/$defs/currency"
+    },
+    "timezone": {
+      "type": "string"
+    },
+    "period_start": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "period_end": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "currency_exponents": {
+      "$ref": "common.json#/$defs/exponents"
+    },
+    "rounding": {
+      "const": "ROUND_HALF_EVEN"
+    },
+    "record_counts": {
+      "type": "object",
+      "properties": {
+        "ledger": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invoices": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "payments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fx": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ledger",
+        "invoices",
+        "payments",
+        "fx"
+      ],
+      "additionalProperties": false
+    },
+    "record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "document_count": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "generator_version",
+    "episode_id",
+    "company",
+    "base_currency",
+    "timezone",
+    "period_start",
+    "period_end",
+    "currency_exponents",
+    "rounding",
+    "record_counts",
+    "record_count",
+    "document_count"
+  ],
+  "additionalProperties": false
+}

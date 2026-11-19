@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/common.json",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "table": {
+      "enum": [
+        "ledger",
+        "invoices",
+        "payments",
+        "fx"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "duplicate_invoice",
+        "payment_allocation",
+        "fx_conversion",
+        "period_cutoff"
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "budget": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "exponents": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "common.json#/$defs/currency"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9
+      }
+    },
+    "reward": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1
+    }
+  }
+}

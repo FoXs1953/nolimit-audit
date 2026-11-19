@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/provenance.json",
+  "type": "object",
+  "properties": {
+    "episode_id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "generator_version": {
+      "const": "1.0.0"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "config": {
+      "$ref": "config.json"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue_id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "operation": {
+            "$ref": "common.json#/$defs/kind"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "table": {
+                      "const": "ledger"
+                    },
+                    "record_id": {
+                      "$ref": "common.json#/$defs/id"
+                    },
+                    "before": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "records.json#/$defs/ledger"
+                        }
+                      ]
+                    },
+                    "after": {
+                      "$ref": "records.json#/$defs/ledger"
+                    }
+                  },
+                  "required": [
+                    "table",
+                    "record_id",
+                    "before",
+                    "after"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "table": {
+                      "const": "invoices"
+                    },
+                    "record_id": {
+                      "$ref": "common.json#/$defs/id"
+                    },
+                    "before": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "records.json#/$defs/invoices"
+                        }
+                      ]
+                    },
+                    "after": {
+                      "$ref": "records.json#/$defs/invoices"
+                    }
+                  },
+                  "required": [
+                    "table",
+                    "record_id",
+                    "before",
+                    "after"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "table": {
+                      "const": "payments"
+                    },
+                    "record_id": {
+                      "$ref": "common.json#/$defs/id"
+                    },
+                    "before": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "records.json#/$defs/payments"
+                        }
+                      ]
+                    },
+                    "after": {
+                      "$ref": "records.json#/$defs/payments"
+                    }
+                  },
+                  "required": [
+                    "table",
+                    "record_id",
+                    "before",
+                    "after"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "table": {
+                      "const": "fx"
+                    },
+                    "record_id": {
+                      "$ref": "common.json#/$defs/id"
+                    },
+                    "before": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "records.json#/$defs/fx"
+                        }
+                      ]
+                    },
+                    "after": {
+                      "$ref": "records.json#/$defs/fx"
+                    }
+                  },
+                  "required": [
+                    "table",
+                    "record_id",
+                    "before",
+                    "after"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "minItems": 1
+          },
+          "used_quote": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "used_rate": {
+            "type": "string",
+            "pattern": "^[0-9]+(?:\\.[0-9]+)?$"
+          }
+        },
+        "required": [
+          "issue_id",
+          "operation",
+          "changes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 12
+    }
+  },
+  "required": [
+    "episode_id",
+    "generator_version",
+    "seed",
+    "config",
+    "changes"
+  ],
+  "additionalProperties": false
+}

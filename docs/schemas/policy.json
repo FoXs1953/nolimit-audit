@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/policy.json",
+  "type": "object",
+  "properties": {
+    "policy_version": {
+      "const": "1.0.0"
+    },
+    "currency_exponents": {
+      "$ref": "common.json#/$defs/exponents"
+    },
+    "rounding": {
+      "const": "ROUND_HALF_EVEN"
+    },
+    "amount_tolerance_minor": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "fx_date": {
+      "type": "string"
+    },
+    "rate_direction": {
+      "type": "string"
+    },
+    "period": {
+      "type": "string"
+    },
+    "document_identity": {
+      "type": "string"
+    },
+    "allocation": {
+      "type": "string"
+    },
+    "journal": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "policy_version",
+    "currency_exponents",
+    "rounding",
+    "amount_tolerance_minor",
+    "fx_date",
+    "rate_direction",
+    "period",
+    "document_identity",
+    "allocation",
+    "journal"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nolimit.example/schemas/truth.json",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "issue_id": {
+        "$ref": "common.json#/$defs/id"
+      },
+      "type": {
+        "$ref": "common.json#/$defs/kind"
+      },
+      "affected_ids": {
+        "type": "array",
+        "items": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "minItems": 1,
+        "uniqueItems": true
+      },
+      "expected_amount_minor": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "currency": {
+        "$ref": "common.json#/$defs/currency"
+      },
+      "evidence_sets": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true
+        },
+        "minItems": 1
+      },
+      "tolerance_minor": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "issue_id",
+      "type",
+      "affected_ids",
+      "expected_amount_minor",
+      "currency",
+      "evidence_sets"
+    ],
+    "additionalProperties": false
+  },
+  "maxItems": 12
+}
