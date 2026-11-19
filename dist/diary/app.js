@@ -189,7 +189,7 @@ async function go(target,options={}){
     if(find('sheet').open)closeSheet();
     return;
   }
-  const method=history.state?.panel || key===route?'replaceState':'pushState';
+  const method=history.state?.panel || history.state?.cardViewer || key===route?'replaceState':'pushState';
   hidePanel(true);history[method]({},'','#'+key);
   await render(key,options.focus!==false);
 }
