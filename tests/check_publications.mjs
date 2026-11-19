@@ -14,18 +14,34 @@ const {outputFiles}=await build({
   bundle:true,format:'esm',target:'es2022',write:false
 });
 const mf=new Miniflare({modules:true,script:outputFiles[0].text,d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-04-01'});
-const id=()=>crypto.randomUUID(), pub=id(), photo=id(), audio=id(), otherPhoto=id(), comment=id();
+const id=()=>crypto.randomUUID(), pub=id(), photo=id(), audio=id(), video=id(), otherPhoto=id(), comment=id();
 const files=new URL('../dist/diary/media/',import.meta.url);
 const image=await readFile(new URL('river.jpg',files)), song=await readFile(new URL('coffee.mp3',files));
+const webmHeader=Buffer.from([0x1a,0x45,0xdf,0xa3,0x42,0x82,0x84,0x77,0x65,0x62,0x6d]);
+const videoSize=50*1024*1024;
+function videoStream(size) {
+  let written=0;
+  return new ReadableStream({
+    pull(controller) {
+      const bytes=new Uint8Array(Math.min(size-written,64*1024));
+      if (!written) bytes.set(webmHeader);
+      written+=bytes.length;
+      if (written===size) bytes[bytes.length-1]=0xaf;
+      controller.enqueue(bytes);
+      if (written===size) controller.close();
+    }
+  });
+}
 const card={title:'River bend',caption:'Spring',text:'An afternoon walk',date:'2026-06-30',
-  recipe:{version:1,color:'#228833',reasons:{private:'never disclose'}},photos:[{assetId:photo,name:'private.jpg'}],
+  recipe:{version:1,color:'#228833',reasons:{private:'never disclose'}},photos:[{assetId:video,kind:'video'},{assetId:photo,name:'private.jpg'}],
   music:{kind:'file',assetId:audio,name:'local_filename'},moments:['private note']};
 const A='anna', B='ilya', C='lena';
 async function request(who,method,path,data,extra={}) {
   const headers={'test-profile':who,...extra};
   let body=data;
-  if (data && !Buffer.isBuffer(data)) {headers['Content-Type']='application/json';body=JSON.stringify(data);}
-  return mf.dispatchFetch('https://diary.test/api/social'+path,{method,headers,body});
+  const streaming=data instanceof ReadableStream;
+  if (data && !Buffer.isBuffer(data) && !streaming) {headers['Content-Type']='application/json';body=JSON.stringify(data);}
+  return mf.dispatchFetch('https://diary.test/api/social'+path,{method,headers,body,...(streaming?{duplex:'half'}:{})});
 }
 async function api(who,method,path,data,expected=200,extra={}) {
   const r=await request(who,method,path,data,extra), result=await r.json();
@@ -34,7 +50,9 @@ async function api(who,method,path,data,expected=200,extra={}) {
   return result;
 }
 const publish=(data,status,extra)=>api(A,'PUT','/publications/'+pub,data,status,extra);
-const upload=(who,key,data,type,expected=200)=>api(who,'POST','/uploads/'+key,data,expected,{'Content-Type':type});
+const upload=(who,key,data,type,expected=200)=>api(who,'POST','/uploads/'+key,data,expected,{
+  'Content-Type':type,...(Buffer.isBuffer(data)?{'Content-Length':String(data.length)}:{})
+});
 try {
   const db=await mf.getD1Database('DB');
   for (const file of ['0000_people','0001_publications']) {
@@ -47,6 +65,8 @@ try {
   const friend=(b)=>db.prepare('INSERT INTO friendships(a,b,inviter_id,accepted_token,accepted_request_id) VALUES(?,?,?,?,?)').bind(A,b,A,id(),id()).run();
   await friend(B);
   await upload(A,photo,image,'image/jpeg');
+  await upload(A,video,videoStream(videoSize),'video/webm');
+  await upload(A,id(),image,'video/mp4',415);
   await upload(A,audio,song,'audio/mpeg');
   await upload(C,otherPhoto,image,'image/jpeg');
   await upload(A,id(),Buffer.from('<html>'), 'image/png',415);
@@ -54,12 +74,22 @@ try {
   assert.equal((await publish({...first,recipientIds:[C]},409)).error,'invalid_recipient');
   await publish({...first,day:{...card,photos:[{assetId:otherPhoto}]}},409);
   assert.equal((await api(A,'GET','/mine')).days.length,0);
+  await publish({...first,day:{...card,photos:[{assetId:video}]}},409);
   const saved=await publish(first);
   assert.equal(saved.accessVersion,1);
   assert.deepEqual(saved.recipientIds,[B]);
   assert.equal(saved.day.music.name,undefined);
   assert.equal(saved.day.moments,undefined);
-  assert.equal(saved.day.photos[0].name,undefined);
+  assert.equal(saved.day.photos[0].kind,'video');
+  assert.equal(saved.day.photos[1].name,undefined);
+  const cover=await request(B,'GET',saved.day.photos[0].src.replace('/api/social',''),null,{Range:'bytes=0-3'});
+  assert.equal(cover.status,206);
+  assert.equal(cover.headers.get('Content-Type'),'video/webm');
+  assert.deepEqual(Buffer.from(await cover.arrayBuffer()),webmHeader.subarray(0,4));
+  assert.equal(cover.headers.get('Content-Range'),'bytes 0-3/'+videoSize);
+  const finalByte=await request(B,'GET',saved.day.photos[0].src.replace('/api/social',''),null,{Range:'bytes=-1'});
+  assert.deepEqual(Buffer.from(await finalByte.arrayBuffer()),Buffer.from([0xaf]));
+  assert.equal((await api(B,'GET','/feed')).days[0].coverKind,'video');
   assert.equal(saved.day.recipe.reasons,undefined);
   assert.equal((await publish(first)).contentVersion,1);
   await api(C,'GET','/publications/'+pub,null,404);

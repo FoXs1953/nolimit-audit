@@ -24,17 +24,19 @@ async function feed(request,db,user,mine) {
   const condition=mine ? 'p.owner_id=?1' : `p.owner_id<>?1 AND ${readable}${author ? ' AND p.owner_id=?2' : ''}`;
   const query=db.prepare(`SELECT p.id,p.owner_id,u.name,u.code,p.mode,p.access_version,p.content_version,
     json_extract(p.day_json,'$.title') title,json_extract(p.day_json,'$.date') date,
-    json_extract(p.day_json,'$.photos[0].assetId') cover FROM publications p JOIN profiles u ON u.id=p.owner_id
+    json_extract(p.day_json,'$.photos[0].assetId') cover,json_extract(p.day_json,'$.photos[0].kind') cover_kind FROM publications p JOIN profiles u ON u.id=p.owner_id
     WHERE ${condition} ORDER BY p.published_at DESC,p.id DESC`);
   const {results}=await query.bind(...(!mine && author ? [user,author] : [user])).all();
   return json({days:results.map(row=>({
     id:row.id,title:row.title,date:row.date,cover:row.cover ? mediaURL(row.id,row.cover) : null,owner:person(row),
+    ...(row.cover_kind==='video' ? {coverKind:'video'} : {}),
     ...(mine ? {mode:row.mode,accessVersion:row.access_version,contentVersion:row.content_version} : {})
   }))});
 }
 
 const validAssets=`NOT EXISTS (SELECT 1 FROM json_each(?4) a WHERE NOT EXISTS (
-  SELECT 1 FROM publication_media m WHERE m.id=json_extract(a.value,'$.id') AND m.kind=json_extract(a.value,'$.kind')
+  SELECT 1 FROM publication_media m WHERE m.id=json_extract(a.value,'$.id')
+  AND (CASE WHEN m.mime LIKE 'video/%' THEN 'video' ELSE m.kind END)=json_extract(a.value,'$.kind')
   AND m.owner_id=?1 AND (m.state='staged' OR (m.state='active' AND m.publication_id=?2))))`;
 const validRecipients=param=>`NOT EXISTS (SELECT 1 FROM json_each(${param}) a WHERE NOT ${friends('?1','a.value')})`;
 

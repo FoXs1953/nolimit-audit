@@ -30,6 +30,7 @@ const symbols = {
     play:'<path fill="currentColor" stroke="none" d="M6.6 4.2a1 1 0 011.5-.86l12 7.8a1 1 0 010 1.7l-12 7.8a1 1 0 01-1.5-.84Z"/>',
     pause:'<path stroke-width="4" d="M8 5v14m8-14v14"/>',
     prev:'<path d="M5 5v14m13-14L8 12l10 7Z"/>',next:'<path d="M19 5v14M6 5l10 7-10 7Z"/>',
+    moon:'<path d="M20.5 14.1a8.7 8.7 0 0 1-10.6-10.6 8.7 8.7 0 1 0 10.6 10.6Z"/>',
     info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-9v.5"/>',
     calculator:'<rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M8 7h8m-8 5h1m4 0h1m-6 5h1m4 0h1"/>',
     restart:'<path d="M4 10a8 8 0 117 10M4 5v5h5"/>',
@@ -44,6 +45,13 @@ const symbols = {
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
 })[c]);
+
+// A tiny time fragment makes Safari display the first frame of a paused clip.
+export function galleryThumbnail(src, video) {
+  return video
+    ? '<video muted playsinline preload="metadata" aria-hidden="true" src="'+esc(src)+'#t=0.001"></video>'
+    : '<img loading="lazy" src="'+esc(src)+'" alt="">';
+}
 
 export function localDate() {
   const now = new Date();

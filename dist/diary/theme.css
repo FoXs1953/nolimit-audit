@@ -1,0 +1,147 @@
+#theme-toggle {
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  min-width:44px; min-height:44px; padding:8px 11px;
+  border:1px solid var(--line); border-radius:15px;
+  background:var(--paper); color:var(--ink); font-size:.87rem; font-weight:600;
+}
+#theme-icon { display:flex; }
+#theme-toggle:hover { border-color:var(--blue); }
+.theme-setting { flex-wrap:wrap; }
+.theme-setting select {
+  max-width:100%; min-height:44px; padding:6px 10px;
+  border-radius:12px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink); font:inherit;
+}
+@media(max-width:1180px) {
+  #theme-toggle { padding:0; }
+  #theme-label { display:none; }
+}
+@media(min-width:761px) and (max-width:980px) {
+  .context i,#ctx-date { display:none; }
+}
+@media(max-width:470px) { .phone-brand strong span { display:none; } }
+@media(max-width:355px) {
+  .phone-brand img { display:none; }
+  .phone-brand { font-size:16px; }
+}
+
+:root[data-theme="dark"] {
+  color-scheme:dark;
+  --bg:#000;
+  --paper:#151618;
+  --ink:#f2f3f5;
+  --muted:#b3b8c2;
+  --blue:#9abfff;
+  --line:#383c43;
+  --control:#25282e;
+  --hover:#30353d;
+  --control-edge:#626b79;
+  --selected:#203450;
+  --action:#a8c8ff;
+  --on-action:#111c31;
+  --error:#ffa6a6;
+  --error-bg:#432528;
+
+  /* Navigation, dialogs and common controls. */
+  .rail,.topbar,.dock { background:var(--bg); border-color:var(--line); }
+  .rail-foot,.panel:not(.library-item) { border-color:var(--line); }
+  .wordmark-sub,.phone-brand span,.rail-label,.nav-item svg,.context,.ctx-icon,.about,.dock button { color:var(--muted); }
+  .context i { color:var(--control-edge); }
+  .team-symbol,.secondary,.icon-button,.close,.segmented,.language-switch { color:var(--ink); background:var(--control); }
+  .secondary:hover,.icon-button:hover,.about:hover,.nav-item:hover,.grid-list button:hover { background:var(--hover); }
+  .nav-item[aria-current="page"],.dock button.on,.grid-list button.on,#theme-toggle[aria-pressed="true"] {
+    background:var(--selected); color:var(--blue);
+  }
+  .nav-item[aria-current="page"] svg { color:inherit; }
+  .language-switch { border-color:var(--line); }
+  .language-switch button { color:var(--muted); }
+  .language-switch button:hover::before { background:var(--hover); }
+  .language-switch button[aria-pressed="true"] { color:var(--ink); }
+  .language-switch button[aria-pressed="true"]::before { background:#434953; }
+  .skip,.sheet-box { background:var(--paper); }
+  dialog::backdrop { background:#000b; }
+  .sheet-body { color:var(--ink); }
+  .sheet-body a:not(.primary) { color:var(--blue); }
+  .grab { background:var(--control-edge); }
+  .primary,.viewer-play,.home-personal .add-note { background:var(--action); color:var(--on-action); }
+  .primary:hover,.viewer-play:hover,.home-personal .add-note:hover { background:#c1d8ff; color:var(--on-action); }
+  .sheet-error,.danger,.diary-delete { color:var(--error); }
+  .diary-delete:is(:hover,:focus-visible) { background:var(--error-bg); color:var(--error); }
+  #notice { border:1px solid var(--control-edge); background:var(--control); color:var(--ink); }
+  .motion-switch { background:#60656e; }
+  .motion-switch:checked { background:var(--blue); }
+  .motion-switch:checked::before { background:var(--on-action); }
+
+  /* Entries, archive, player and editor. Mood colors belong to each postcard. */
+  .ab-player,.ab-evidence,.card-story,.day-notes,dialog.card-viewer,dialog.card-film[data-inline] {
+    background:var(--paper); border-color:var(--line);
+  }
+  .home-day,.viewer-content>.day-notes { background:#1d1f23; border-color:var(--line); }
+  .home-note-group { background:transparent; }
+  .home-memory,.day-notes p,.card-story p { color:var(--ink); }
+  .home-memory-copy small,.home-memory>svg,.ab-row-next,.diary-card .card-row-next,
+  .day-notes time,.list-detail,.viewer-caption,.viewer-header small,.viewer-music small,.viewer-count,.viewer-status { color:var(--muted); }
+  .ab-source-icon,.home-memory-mark,.sample-sound,.viewer-music-glyph,.empty-icon,.personal-gallery .empty-icon { background:var(--selected); color:var(--blue); }
+  .home-all-days,.day-edit,.card-story button,.viewer-source,.note-disclosure summary,.sample-link { color:var(--blue); }
+  .day-card-actions .day-edit,.personal-card .day-visibility { color:inherit; }
+  .day-card-actions button:is(:hover,:focus-visible) { color:#242733; background:var(--stamp); }
+  .sample-paging button,.viewer-control:not(.viewer-play) { background:var(--control); color:var(--ink); }
+  .sample-paging button:disabled { background:var(--paper); color:var(--muted); opacity:.55; }
+  .home-memory:is(:hover,:focus-visible),.ab-row:hover,.viewer-control:not(.viewer-play):hover { background:var(--hover); }
+  .day-edit:is(:hover,:focus-visible),.sample-sound:hover { background:var(--selected); color:var(--blue); }
+  .day-card-actions .day-edit:is(:hover,:focus-visible) { color:#242733; background:var(--stamp); }
+  .viewer-mute[aria-pressed="true"]::after { background:var(--muted); box-shadow:0 1px 0 var(--control); }
+  .viewer-photo-well { background:#17191d; border-color:color-mix(in srgb,var(--day-paper) 32%,var(--control)); }
+  .card-film .viewer-photo-well { background:#17191d; }
+  .ab-scrub input::-webkit-slider-runnable-track { background:linear-gradient(90deg,var(--blue) 0 var(--ab-fill),var(--control-edge) var(--ab-fill) 100%); }
+  .ab-scrub input::-moz-range-track { background:var(--control-edge); }
+
+  .sample-picker select,.month-select select,.search-box,.day-field,.theme-setting select,
+  .ed-field :is(input:not([type="range"]),textarea,select) { background:var(--control); border-color:var(--control-edge); color:var(--ink); }
+  .search-box svg,.ed-discard,.ed-panel [data-ed-link-action] { color:var(--muted); }
+  input::placeholder,textarea::placeholder,.ed-field :is(input,textarea)::placeholder { color:var(--muted); }
+  .ed-layout { --ed-edge:var(--line); }
+  .ed-field,.ed-layout summary { color:var(--ink); }
+  .ed-switch { background:var(--control); }
+  .ed-switch button { color:var(--muted); }
+  .ed-switch button[aria-pressed="true"] { background:#434953; color:var(--ink); }
+  .ed-head [data-warn="true"],.ed-error,.ed-inline-error { color:var(--error); }
+  .ed-error:not(:empty) { border-color:var(--error); background:var(--error-bg); }
+  .ed-field :is(input,textarea)[aria-invalid="true"] { border-color:var(--error); }
+
+  /* Friends, publication settings and discussions. */
+  .fh { --fh-muted:var(--muted); --fh-edge:var(--line); --fh-accent:var(--blue); }
+  .fh-tabs,.fh-icon,.fh-me { background:var(--control); color:var(--ink); }
+  .fh-tabs,.fh .secondary,.fh .fh-icon,.fh .fh-me { border-color:var(--control-edge); }
+  .fh-tabs [aria-current="page"],.fh .fh-tabs [aria-current="page"]:hover { background:var(--hover); color:var(--ink); border-color:var(--blue); }
+  .fh-mark,.fh-avatar,.fh-me .fh-avatar,.fh-badge { background:var(--selected); color:var(--blue); }
+  .fh-form input,.fh-link-field input,.fh-search,
+  .social-discussion :is(input,textarea),.share-song select { background:var(--control); border-color:var(--control-edge); color:var(--ink); }
+  .fh .fh-me[aria-expanded="true"],.fh .primary[aria-expanded="true"] { box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--blue); }
+  .fh :is(.fh-tabs button,.fh-back,.fh-text,.fh-menu-link,.fh-person-link,.fh-byline,.fh-icon,.fh-me):hover { background:var(--hover); }
+  .fh-error,.fh-danger-text,.fh .fh-response .fh-icon { color:var(--error); }
+  .fh :is(.fh-danger-text,.fh-response .fh-icon):hover { background:var(--error-bg); color:var(--error); }
+
+  .social-settings { color:var(--ink); }
+  .share-preview,.social-settings .social-mode,.social-settings .social-friend-check,.social-settings .secondary,
+  .social-settings .social-danger,.sd-reactions button { background:var(--control); color:var(--ink); border-color:var(--control-edge); }
+  .social-settings .social-mode:has(input:checked),.social-settings .social-friend-check:has(input:checked),
+  .sd-reactions [aria-pressed="true"],.sd-reactions [aria-pressed="true"]:hover:not(:disabled) {
+    background:var(--selected); color:var(--blue); border-color:var(--blue); box-shadow:inset 0 0 0 1px var(--blue);
+  }
+  .social-settings input:is([type="radio"],[type="checkbox"]) { accent-color:var(--blue); }
+  .social-settings .social-danger,.sd-delete,#sd-length { color:var(--error); }
+  .share-remove { border-color:var(--line); }
+  .social-actions .sd-back { color:var(--blue); }
+  .social-actions .sd-back:hover,.sd-reactions button:hover:not(:disabled) { background:var(--hover); border-color:var(--blue); }
+  .sd-delete:hover:not(:disabled) { color:var(--error); background:var(--error-bg); }
+  .social-settings :is(.social-as,[data-mode-hint],[data-count],.share-song p,.social-friend-check small),
+  .sd-toolbar .sd-byline,.sd-reactors,.sd-reactors small,.sd-c-head :is(small,time),
+  #sd-visible,.social-discussion :is([data-empty],[data-status]) { color:var(--muted); }
+  .sd-reactors strong { color:var(--ink); }
+  .social-settings :is(button,a,summary,input,select):focus-visible,.social-settings label:has(input:focus-visible),
+  .fh :is(button,a,input):focus-visible,.social-discussion :is(button,a,textarea,input):focus-visible,
+  .social-actions :is(button,a):focus-visible,#dock [data-route]:focus-visible,#nav [data-route]:focus-visible {
+    outline-color:var(--blue);
+  }
+}

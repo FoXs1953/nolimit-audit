@@ -1,4 +1,4 @@
-import { saveDay } from './store.js';
+import { galleryBytes, isGalleryVideo, MAX_GALLERY_BYTES, saveDay } from './store.js';
 import { makeRecipe, moodOptions, normalizeMood } from './art.js';
 import { musicLink } from './music-link.js';
 import { formatDate, getLanguage, getLocale, translator } from './i18n.js';
@@ -26,11 +26,49 @@ function cleanBase(record) {
 }
 function clamp(value, low, high) { return Math.min(high, Math.max(low,value)); }
 
+const videoTypes = {mp4:'video/mp4', m4v:'video/mp4', webm:'video/webm', mov:'video/quicktime'};
+
+async function attachmentFromFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const extensionType = Object.hasOwn(videoTypes,ext) ? videoTypes[ext] : '';
+  let type = file.type.toLowerCase().split(';')[0].trim();
+  if (!type || type === 'application/octet-stream') type = extensionType;
+  if (type === 'video/x-m4v' || type === 'video/m4v') type = 'video/mp4';
+  if (!type.startsWith('video/') && !extensionType) return photoFromFile(file);
+  if (!Object.values(videoTypes).includes(type)) throw Error(t('videoTypes'));
+  if (!file.size || file.size > 50*1024*1024) throw Error(t('videoSize'));
+
+  const blob = file.type === type ? file : file.slice(0,file.size,type);
+  const src = URL.createObjectURL(blob);
+  const video = document.createElement('video');
+  video.preload = 'metadata';
+  video.muted = true;
+  video.playsInline = true;
+  let timer;
+  try {
+    await new Promise((resolve,reject)=>{
+      const failed = ()=>reject(Error(t('videoDecode')));
+      timer = setTimeout(failed,12000);
+      video.onerror = failed;
+      video.onloadedmetadata = ()=>video.videoWidth && video.videoHeight ? resolve() : failed();
+      video.src = src;
+    });
+    return {id:crypto.randomUUID(), kind:'video', name:file.name, blob};
+  } finally {
+    clearTimeout(timer);
+    video.onloadedmetadata = video.onerror = null;
+    video.removeAttribute('src');
+    video.load();
+    URL.revokeObjectURL(src);
+  }
+}
+
 async function photoFromFile(file) {
   if (file.size > 12*1024*1024) throw Error(t('photoTooLarge'));
   if (!file.size) throw Error(t('emptyPhoto'));
   const heic = /\.(?:heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type);
-  if (!heic && !(file.type ? /^image\/(?:jpe?g|png|webp)$/i.test(file.type) : /\.(?:jpe?g|png|webp)$/i.test(file.name))) {
+  const genericType = !file.type || file.type === 'application/octet-stream';
+  if (!heic && !(genericType ? /\.(?:jpe?g|png|webp)$/i.test(file.name) : /^image\/(?:jpe?g|png|webp)$/i.test(file.type))) {
     throw Error(t('imageTypes'));
   }
   const src = URL.createObjectURL(file);
@@ -67,7 +105,7 @@ async function photoFromFile(file) {
       if (!blob) throw Error(t('imageHeic'));
       name = name.replace(/\.(hei[cf])$/i,'')+'.jpg';
     }
-    if (!blob.type) {
+    if (!blob.type || blob.type === 'application/octet-stream') {
       const type = /\.webp$/i.test(name) ? 'image/webp' : /\.png$/i.test(name) ? 'image/png' : 'image/jpeg';
       blob = blob.slice(0,blob.size,type);
     }
@@ -152,7 +190,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   },cleanBase(record),record.pendingEdit || {});
   Object.assign(draft,{id:record.id || crypto.randomUUID(),revision:record.revision,primary:record.primary,status:'draft'});
   draft.moodOverride = normalizeMood(draft.moodOverride);
-  draft.photos = (draft.photos || []).map(p=>({...p}));
+  draft.photos = (draft.photos || []).map(p=>({...p,id:p.id || crypto.randomUUID()}));
   draft.moments = [...(draft.moments || [])];
   draft.music = draft.music ? {...draft.music} : null;
   draft.musicMode ||= draft.music?.kind === 'link' ? 'link' : 'file';
@@ -160,7 +198,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   draft.linkName ??= draft.music?.kind==='link' ? draft.music.name : '';
   let base = record;
   let seq=0, persisted=0, timer, selected=viewState.selected ?? draft.photos[0]?.id, busy=0, disposed=false, committing=false, saveError='';
-  let writeQueue=Promise.resolve(), saveTask=null, importErrors=0;
+  let writeQueue=Promise.resolve(), galleryQueue=Promise.resolve(), saveTask=null, importErrors=0;
   const tasks=new Set(), urls=new Map();
   const controller=new AbortController();
   const $=s=>root.querySelector(s);
@@ -170,7 +208,14 @@ export function mountEditor(root, record, ctx, viewState = {}) {
       if (!urls.has(asset.blob)) urls.set(asset.blob,URL.createObjectURL(asset.blob));
       return urls.get(asset.blob);
     }
-    return typeof asset.src === 'string' && /^(?:\.\/)?diary\/media\/[\w./% -]+$/.test(asset.src) && !asset.src.includes('..') ? asset.src : '';
+    return typeof asset.src === 'string' && /^(?:\.\/|\/)?diary\/media\/[\w./% -]+$/.test(asset.src) && !asset.src.includes('..') ? asset.src : '';
+  }
+  function releaseUnusedUrls() {
+    const used = new Set([...draft.photos.map(p=>p.blob),draft.music?.blob]);
+    for (const [blob,url] of urls) if (!used.has(blob)) {
+      URL.revokeObjectURL(url);
+      urls.delete(blob);
+    }
   }
   const limited = (value,low,high)=>clamp(Number.isFinite(Number(value))?Number(value):50,low,high);
   function issue(text='',field=null) {
@@ -234,7 +279,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     const ok= await queueDraft();
     if (ok===false && seq>persisted) throw Error(saveError);
   }
-  function on(target,event,fn) { target.addEventListener(event,fn,{signal:controller.signal}); }
+  function on(target,event,fn,capture=false) { target.addEventListener(event,fn,{signal:controller.signal,capture}); }
   function track(task, field) {
     const p=Promise.resolve(task);tasks.add(p);busy++;viewStatus();
     p.catch(e=>{importErrors++;if(!disposed) issue(e?.message || t('fileProcessError'),field);}).finally(()=>{
@@ -245,9 +290,9 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     `<section class="panel ed-panel"><div class="ed-head"><h2>${t('entry')}</h2><span data-ed-status role="status"></span></div>`+
     `<label class="ed-field">${t('date')}<input type="date" data-ed-date></label>`+
     `<label class="ed-field">${t('dayText')}<textarea rows="4" data-ed-text maxlength="16000" placeholder="${t('dayPrompt')}"></textarea></label><div data-ed-moments></div></section>`+
-    `<section class="panel ed-panel"><div class="ed-head"><h2>${t('photos')}</h2><span data-ed-count></span></div>`+
-    `<div data-ed-gallery></div><button type="button" class="secondary ed-add" data-ed-add-photo>${t('addPhoto')}</button>`+
-    '<input type="file" hidden accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple data-ed-photos>'+
+    `<section class="panel ed-panel ed-gallery-panel"><div class="ed-head"><h2>${t('photos')}</h2><span data-ed-count></span></div>`+
+    `<div data-ed-gallery></div><button type="button" class="secondary ed-add" data-ed-add-photo>${ctx.icon('plus',17)}${t('addPhoto')}</button>`+
+    '<input type="file" hidden accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" multiple data-ed-photos>'+
     `<p class="ed-help">${t('photoLimit')}</p></section>`+
     `<section class="panel ed-panel"><div class="ed-head"><h2>${t('songOfDay')}</h2></div>`+
     `<div class="ed-switch" role="group" aria-label="${t('musicSource')}"><button type="button" data-ed-mode="file">${t('audioFile')}</button><button type="button" data-ed-mode="link">${t('link')}</button></div>`+
@@ -258,7 +303,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     `<label class="ed-field">${t('songName')}<input type="text" data-ed-link-name maxlength="120" placeholder="${t('songPrompt')}"></label>`+
     '<div data-ed-link-action></div></div></section></div>'+
     `<div class="ed-side"><section class="panel ed-panel ed-summary"><div class="ed-head"><h2>${t('postcard')}</h2></div>`+
-    '<div class="ed-mini" data-ed-mini><div class="ed-mini-copy"><small data-ed-scene></small><strong data-ed-title></strong><p data-ed-caption></p></div><figure class="ed-mini-paper"><img data-ed-image hidden alt=""><span data-ed-empty-frame aria-hidden="true"></span><figcaption data-ed-print-date></figcaption></figure></div>'+
+    '<div class="ed-mini" data-ed-mini><div class="ed-mini-copy"><small data-ed-scene></small><strong data-ed-title></strong><p data-ed-caption></p></div><figure class="ed-mini-paper"><div data-ed-frame></div><figcaption data-ed-print-date></figcaption></figure></div>'+
     `<details class="ed-custom"><summary>${t('customize')}</summary><label class="ed-field">${t('folderName')}<input data-ed-title-input maxlength="95" placeholder="${t('autoWords')}"></label>`+
     `<label class="ed-field">${t('caption')}<textarea rows="2" data-ed-cap-input maxlength="220" placeholder="${t('captionPrompt')}"></textarea></label>`+
     `<button type="button" class="ed-text-button" data-ed-choose>${t('chooseText')}</button>`+
@@ -272,15 +317,36 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   $('[data-ed-link]').value=draft.linkDraft || ''; $('[data-ed-link-name]').value=draft.linkName || '';
   const photoInput=$('[data-ed-photos]'), musicInput=$('[data-ed-music]');
   const stateForRecipe=()=>({...draft,music:draft.music?.kind===draft.musicMode?draft.music:null});
+  function positionOf(asset) {
+    return limited(asset.x??50,0,100)+'% '+limited(asset.y??50,0,100)+'%';
+  }
+  function still(asset) {
+    const url=assetUrl(asset);
+    if (!url) return '<span data-ed-empty-frame aria-hidden="true"></span>';
+    if (isGalleryVideo(asset)) {
+      return '<video muted playsinline preload="metadata" aria-hidden="true" tabindex="-1" src="'+esc(url)+'#t=0.001"></video>'+
+        '<span class="ed-video-badge" aria-hidden="true">'+ctx.icon('play',12)+'</span>';
+    }
+    return '<img alt="" src="'+esc(url)+'" style="object-position:'+positionOf(asset)+'">';
+  }
+  let coverAsset;
   function paintPreview() {
     if (disposed) return;
     const recipe=makeRecipe(stateForRecipe());
-    const pic=draft.photos[0], mini=$('[data-ed-mini]'), img=$('[data-ed-image]');
-    const src=assetUrl(pic);
-    if (src && img.getAttribute('src')!==src) img.src=src;
-    if (!src) img.removeAttribute('src');
-    img.hidden=!src;img.alt=pic?.name || '';
-    img.style.objectPosition=limited(pic?.x??50,0,100)+'% '+limited(pic?.y??50,0,100)+'%';
+    const pic=draft.photos[0], mini=$('[data-ed-mini]'), frame=$('[data-ed-frame]');
+    if (coverAsset!==pic || !frame.firstChild) {
+      frame.innerHTML=still(pic);
+      if (pic) {
+        frame.setAttribute('role','img');
+        frame.setAttribute('aria-label',t('cover')+' · '+pic.name);
+      } else {
+        frame.removeAttribute('role');
+        frame.removeAttribute('aria-label');
+      }
+      coverAsset=pic;
+    } else if (pic && frame.firstElementChild?.matches('img')) {
+      frame.firstElementChild.style.objectPosition=positionOf(pic);
+    }
     mini.style.setProperty('--ed-wash',/^#[a-f\d]{6}$/i.test(recipe.color) ? recipe.color : '#1855c9');
     mini.dataset.mood=recipe.mood;
     mini.style.setProperty('--ed-tilt',(Number(recipe.tilt) || 0)+'deg');
@@ -291,17 +357,35 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     $('[data-ed-choose]').disabled=!draft.text.trim();
   }
   function paintPhotos() {
-    const box=$('[data-ed-gallery]');box.replaceChildren();
+    const box=$('[data-ed-gallery]');
+    box.querySelector('video[controls]')?.pause();
+    box.replaceChildren();
     if(!draft.photos.some(p=>p.id===selected)) selected=draft.photos[0]?.id;
     $('[data-ed-count]').textContent=draft.photos.length+' / 6';
     $('[data-ed-add-photo]').disabled=draft.photos.length>=6;
     if(!draft.photos.length) return;
-    const index=draft.photos.findIndex(p=>p.id===selected), photo=draft.photos[index];
-    const thumbs = draft.photos.map((p,i)=>'<button type="button" class="ed-thumb" data-ed-select="'+i+'" aria-label="'+t('photoNumber',{n:i+1})+': '+esc(p.name)+'" aria-pressed="'+(p.id===selected)+'"><img src="'+esc(assetUrl(p))+'" alt="" style="object-position:'+limited(p.x??50,0,100)+'% '+limited(p.y??50,0,100)+'%"></button>').join('');
-    box.innerHTML=`<div class="ed-thumbs" aria-label="${t('dayPhotos')}">`+thumbs+'</div><div class="ed-photo-line"><strong>'+esc(photo.name)+'</strong><span>'+(index===0?t('cover'):t('photoNumber',{n:index+1}))+'</span></div>'+
-      '<div class="ed-photo-controls"><button type="button" data-ed-photo-op="cover" '+(!index?'disabled':'')+`>${t('useAsCover')}</button><button type="button" data-ed-photo-op="left" `+(!index?'disabled':'')+`>${t('left')}</button><button type="button" data-ed-photo-op="right" `+(index===draft.photos.length-1?'disabled':'')+`>${t('right')}</button><button type="button" data-ed-photo-op="remove">${t('remove')}</button></div>`+
-      `<details class="ed-crop"><summary>${t('crop')}</summary><label class="ed-field">${t('horizontal')}<input type="range" min="0" max="100" data-ed-crop="x" value="`+limited(photo.x??50,0,100)+'"></label>'+
-      `<label class="ed-field">${t('vertical')}<input type="range" min="0" max="100" data-ed-crop="y" value="`+limited(photo.y??50,0,100)+'"></label></details>';
+    const index=draft.photos.findIndex(p=>p.id===selected), asset=draft.photos[index];
+    const number=(item,i)=>t(isGalleryVideo(item)?'videoNumber':'photoNumber',{n:i+1});
+    const thumbs=draft.photos.map((item,i)=>
+      `<button type="button" class="ed-thumb" data-ed-select="${i}" aria-label="${number(item,i)} · ${esc(item.name)}" aria-pressed="${i===index}">${still(item)}</button>`
+    ).join('');
+    const controls=[
+      ['cover','useAsCover','layers',index===0],
+      ['left','left','chevron',index===0],
+      ['right','right','chevron',index===draft.photos.length-1],
+      ['remove','remove','trash',false]
+    ].map(([op,label,icon,disabled])=>
+      `<button type="button" data-ed-photo-op="${op}"${disabled?' disabled':''}>${ctx.icon(icon,17)}<span>${t(label)}</span></button>`
+    ).join('');
+    const preview=isGalleryVideo(asset)
+      ? `<video class="ed-video-player" data-ed-selected-video controls playsinline preload="metadata" aria-label="${esc(asset.name)}" src="${esc(assetUrl(asset))}"></video>`
+      : `<details class="ed-crop"><summary>${t('crop')}</summary><div class="ed-crop-body"><div class="ed-crop-frame">${still(asset)}</div><div>
+          <label class="ed-field">${t('horizontal')}<input type="range" min="0" max="100" data-ed-crop="x" value="${limited(asset.x??50,0,100)}"></label>
+          <label class="ed-field">${t('vertical')}<input type="range" min="0" max="100" data-ed-crop="y" value="${limited(asset.y??50,0,100)}"></label>
+        </div></div></details>`;
+    box.innerHTML=`<div class="ed-thumbs" role="group" aria-label="${t('dayPhotos')}">${thumbs}</div>
+      <div class="ed-photo-line"><strong>${esc(asset.name)}</strong><span>${index===0?t('cover'):number(asset,index)}</span></div>
+      <div class="ed-photo-controls" role="group" aria-label="${esc(asset.name)}">${controls}</div>${preview}`;
   }
   function paintFile() {
     const box=$('[data-ed-current-file]'), track=draft.music;
@@ -410,38 +494,44 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   on(photoInput,'change',()=>{
     const files=[...photoInput.files]; photoInput.value='';
     if(!files.length)return;
-    track((async()=>{
+    const addFiles=async()=>{
+      if(disposed)return;
       issue('');const errors=[];
       for(const file of files) {
         if(disposed)return;
         if(draft.photos.length>=6) {errors.push(t('maxPhotos'));break;}
         try {
-          const p=await photoFromFile(file);
+          const p=await attachmentFromFile(file);
+          if(await galleryBytes([...draft.photos,p]) > MAX_GALLERY_BYTES) throw Error(t('galleryTooLarge'));
           if(disposed)return;
-          if(draft.photos.length>=6){errors.push(t('maxPhotos'));break;}
           draft.photos.push(p);selected=p.id;paintPhotos();mark();
-        } catch(e){errors.push(e.message);}
+        } catch(e){errors.push(file.name+' — '+e.message);}
       }
-      if(errors.length) {importErrors++;issue(errors.join(' '),$('[data-ed-add-photo]'));}
-    })(),$('[data-ed-add-photo]'));
+      if(errors.length && !disposed) {importErrors++;issue(errors.join(' '),$('[data-ed-add-photo]'));}
+    };
+    galleryQueue=galleryQueue.then(addFiles,addFiles);
+    track(galleryQueue,$('[data-ed-add-photo]'));
   });
   on($('[data-ed-gallery]'),'click',e=>{
     const sel=e.target.closest('[data-ed-select]'), op=e.target.closest('[data-ed-photo-op]');
-    if(sel) {selected=draft.photos[Number(sel.dataset.edSelect)]?.id;paintPhotos();$('[data-ed-select][aria-pressed="true"]')?.focus({preventScroll:true});return;}
+    if(sel) {
+      const id=draft.photos[Number(sel.dataset.edSelect)]?.id;
+      if(selected!==id) {selected=id;paintPhotos();$('[data-ed-select][aria-pressed="true"]')?.focus({preventScroll:true});}
+      return;
+    }
     if(!op||op.disabled)return;
     const i=draft.photos.findIndex(p=>p.id===selected);if(i<0)return;
     const [p]=draft.photos.splice(i,1), value=op.dataset.edPhotoOp;
     if(value!=='remove') draft.photos.splice(value==='cover'?0:value==='left'?i-1:i+1,0,p);
     selected=value==='remove'?draft.photos[Math.min(i,draft.photos.length-1)]?.id:p.id;
-    paintPhotos();mark();
+    paintPhotos();mark();releaseUnusedUrls();
     ($('[data-ed-select][aria-pressed="true"]') || $('[data-ed-add-photo]')).focus({preventScroll:true});
   });
   on($('[data-ed-gallery]'),'input',e=>{
     if(!e.target.matches('[data-ed-crop]'))return;
     const p=draft.photos.find(p=>p.id===selected); if(!p)return;
     p[e.target.dataset.edCrop]=limited(e.target.value,0,100);
-    const img=$('.ed-thumb[aria-pressed="true"] img');
-    if(img)img.style.objectPosition=(p.x??50)+'% '+(p.y??50)+'%';
+    for (const img of root.querySelectorAll('.ed-thumb[aria-pressed="true"] img,.ed-crop-frame img')) img.style.objectPosition=positionOf(p);
     mark();
   });
   let audioToken=0;
@@ -501,7 +591,12 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     });
   });
   on($('[data-ed-save]'),'click',finish);
-  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();$('[data-ed-current-file] audio')?.pause();}});
+  on(root,'play',e=>{
+    if(e.target.matches('audio, video[controls]')) {
+      for (const other of root.querySelectorAll('audio,video[controls]')) if(other!==e.target) other.pause();
+    }
+  },true);
+  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();$('[data-ed-current-file] audio')?.pause();$('[data-ed-selected-video]')?.pause();}});
   on(window,'pagehide',queueDraft);
   paintMoments();paintPhotos();showMode();paintPreview();viewStatus();
   function cleanup() {
@@ -509,6 +604,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     if(seq>persisted) queueDraft();
     disposed=true;controller.abort();clearTimeout(timer);
     $('[data-ed-current-file] audio')?.pause();
+    $('[data-ed-selected-video]')?.pause();
     for (const url of urls.values()) URL.revokeObjectURL(url);
     urls.clear();
   }

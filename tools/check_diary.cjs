@@ -87,8 +87,8 @@ async function journey(browser,dir,errors) {
     assert.equal(await story.inputValue(),note);
     await story.fill(firstDay+'. '+note+' Мы дошли до воды, когда тучи рассеялись.');
     await by(main(page),'Сохранить открытку').click();
-    await page.getByText('Добавьте хотя бы одну фотографию.',{exact:true}).waitFor();
-    await chooseFile(page,'Добавить фото',[path.join(media,'river.jpg'),path.join(media,'leaves.jpg')]);
+    await page.getByText('Добавьте хотя бы одно фото или видео.',{exact:true}).waitFor();
+    await chooseFile(page,'Добавить фото и видео',[path.join(media,'river.jpg'),path.join(media,'leaves.jpg')]);
     await by(main(page),'На обложку').waitFor();
     await by(main(page),'Сохранить открытку').click();
     await page.getByText('Выберите аудиофайл или добавьте ссылку на песню.',{exact:true}).waitFor();
@@ -252,7 +252,7 @@ async function personalPreviews(browser,errors) {
     const today=await dateField.inputValue();
     await dateField.fill(pastDate);
     await story.fill(firstDay+'.');
-    await chooseFile(page,'Добавить фото',path.join(media,'river.jpg'));
+    await chooseFile(page,'Добавить фото и видео',path.join(media,'river.jpg'));
     await chooseFile(page,'Выбрать аудиофайл',makeTone());
     await saveCard(page);
     const savedRoute=new URL(page.url()).hash;
@@ -316,6 +316,62 @@ async function personalPreviews(browser,errors) {
     console.log(engine+' 390px touch: edited the selected saved day and draft from both previews, verified saved changes, deletion and undo');
   } finally {await ctx.close();}
 }
+// Playwright's recorder creates a small silent WebM on the hosted runner.
+async function mixedGallery(browser,dir,errors) {
+  const recording=await browser.newContext({recordVideo:{dir,size:{width:160,height:120}}});
+  const scene=await recording.newPage();
+  const clip=scene.video();
+  try {
+    await scene.setContent('<body style="background:#345c42">');
+    await scene.evaluate(()=>document.body.animate([{opacity:.3},{opacity:1}],500).finished.then(()=>{}));
+  } finally {await recording.close();}
+  const videoPath=await clip.path();
+  const ctx=await browser.newContext({colorScheme:'dark',viewport:{width:390,height:844}});
+  try {
+    const page=await ctx.newPage();logErrors(page,errors);
+    await ready(page);
+    assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+    await page.locator('#theme-toggle').click();
+    await page.reload();await by(main(page),'Записать день').click();
+    assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
+    await page.getByRole('textbox',{name:'Текст дня'}).fill('Зелёный свет над рекой.');
+    await page.locator('[data-ed-photos]').setInputFiles([path.join(media,'river.jpg'),videoPath]);
+    const picks=page.locator('[data-ed-select]');
+    await picks.nth(1).click();
+    await page.locator('[data-ed-photo-op="cover"]').click();
+    assert.equal(await page.locator('.ed-crop').count(),0);
+    for (const theme of ['light','dark']) {
+      if(theme==='dark')await page.locator('#theme-toggle').click();
+      const actions=page.locator('[data-ed-photo-op]');
+      assert.equal(await actions.count(),4);
+      assert.ok(await actions.evaluateAll(buttons=>buttons.every(button=>{
+        const style=getComputedStyle(button);
+        return parseFloat(style.borderTopWidth)>=1 && style.borderTopStyle==='solid' &&
+          style.backgroundColor!=='rgba(0, 0, 0, 0)' && button.getBoundingClientRect().height>=44;
+      })),theme+' gallery actions have visible borders, fill and usable touch targets');
+      assert.ok(await page.locator('[data-ed-photo-op="cover"]').isDisabled());
+      await layout(page);
+    }
+    await chooseFile(page,'Выбрать аудиофайл',makeTone());
+    await by(main(page),'Заменить аудиофайл').waitFor();
+    await saveCard(page);
+    await page.reload();
+    await by(main(page),'Оживить открытку').click();
+    const viewerVideo=page.locator('[data-card="viewer-video"]');
+    await viewerVideo.waitFor();
+    await page.waitForFunction(()=>document.querySelector('[data-card="viewer-video"]')?.videoWidth>0);
+    assert.ok(await viewerVideo.evaluate(el=>el.controls && el.paused));
+    await viewerVideo.evaluate(el=>el.play());
+    await by(page.getByRole('dialog'),'Следующий кадр').click();
+    await page.locator('[data-card="viewer-photo"]').waitFor();
+    assert.ok(await viewerVideo.evaluate(el=>el.paused));
+    await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();
+    await gotoPage(page,'archive');
+    await page.locator('.day-cover video').waitFor();
+    await layout(page);
+    console.log(engine+': themes persist, mixed attachments save and play, video cover appears in the archive');
+  } finally {await ctx.close();}
+}
 async function dimensions(browser,width,errors) {
   const ctx=await browser.newContext({viewport:{width,height:900}});
   try {
@@ -323,7 +379,7 @@ async function dimensions(browser,width,errors) {
     await by(page,'Следующая открытка').click();await by(main(page),'Открыть открытку').click();
     await by(main(page),'Оживить открытку').waitFor();await layout(page);
     await gotoPage(page,'archive');await page.getByText('Здесь будут твои дни',{exact:true}).waitFor();await layout(page);
-    await by(main(page),'Записать день').click();await by(main(page),'Добавить фото').waitFor();await layout(page);
+    await by(main(page),'Записать день').click();await by(main(page),'Добавить фото и видео').waitFor();await layout(page);
     await gotoPage(page,'settings');await page.getByRole('switch').waitFor();await layout(page);
     await gotoPage(page,'examples');await by(main(page),/Солнце осталось в листьях/,false).waitFor();await layout(page);
     console.log(engine+' '+width+'px: home, collection, editor, archive and settings fit viewport');
@@ -340,6 +396,7 @@ async function dimensions(browser,width,errors) {
     const zip=await journey(browser,dir,errors);
     await importOnCleanDevice(browser,zip,errors);
     await personalPreviews(browser,errors);
+    await mixedGallery(browser,dir,errors);
     for (const width of [320,1360]) await dimensions(browser,width,errors);
     assert.deepEqual(errors,[]);
   } finally {await browser.close();await fs.rm(dir,{recursive:true,force:true});}

@@ -43,7 +43,7 @@ function backFromShared(){
   if(history.state?.friendOrigin){history.back();return;}
   go('friends');
 }
-const ctx = {backFromShared,openSharedAccess:id=>openAccess(ctx,{publicationId:id}),shareDay:day=>openAccess(ctx,{day}),icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
+const ctx = {theme:diaryTheme,backFromShared,openSharedAccess:id=>openAccess(ctx,{publicationId:id}),shareDay:day=>openAccess(ctx,{day}),icon,esc,sheet,closeSheet,toast,go,viewDay,edit,followDraft,copyDemo,quickMoment,dayActions,deleteNote,deleteDayFromHome:day=>confirmDelete(day,'today'),about,setMotion,get reducedMotion(){return reduced();}};
 function downloadError(error){toast(error?.message || t('actionError'));}
 function about(){
   sheet(t('about'),'<p><strong>NoLimit · '+t('journal')+'</strong></p><p>'+t('aboutIntro')+'</p><p>'+t('privacy')+'</p>'+
@@ -280,6 +280,9 @@ function localizeShell(){
   document.querySelector('.rail-label').textContent=t('today');
   find('context-name').textContent=t('personal');
   find('ctx-date').textContent=formatDate(localDate(),{month:'long',year:'numeric'});
+  find('theme-label').textContent=t('blackTheme');
+  find('theme-toggle').setAttribute('aria-label',t('blackTheme'));
+  find('theme-toggle').title=t('blackTheme');
   find('about-label').textContent=t('about');
   find('about').setAttribute('aria-label',t('about'));
   find('sheet-close').setAttribute('aria-label',t('close'));
@@ -315,6 +318,14 @@ document.querySelector('.boot-status').textContent=t('loading');
 document.querySelector('.ctx-icon').innerHTML=icon('book',17);
 document.querySelector('.about-icon').innerHTML=icon('info',17);
 find('sheet-close').innerHTML=icon('close',18);
+const themeToggle=find('theme-toggle');
+function refreshThemeToggle(){
+  themeToggle.setAttribute('aria-pressed',String(document.documentElement.dataset.theme==='dark'));
+}
+find('theme-icon').innerHTML=icon('moon',19);
+refreshThemeToggle();
+document.addEventListener('diarythemechange',refreshThemeToggle);
+themeToggle.onclick=()=>diaryTheme.setPreference(document.documentElement.dataset.theme==='dark'?'light':'dark');
 find('about').onclick=about;
 window.addEventListener('popstate',restoreLocation);
 window.addEventListener('hashchange',()=>{ if(parse(location.hash)!==route)restoreLocation(); });

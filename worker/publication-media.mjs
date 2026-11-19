@@ -6,6 +6,7 @@ const types={
   'image/jpeg':'image/jpeg','image/jpg':'image/jpeg','image/png':'image/png','image/webp':'image/webp',
   'image/gif':'image/gif','image/avif':'image/avif','image/heic':'image/heic','image/heif':'image/heif',
   'image/heic-sequence':'image/heic','image/heif-sequence':'image/heif',
+  'video/mp4':'video/mp4','video/x-m4v':'video/mp4','video/quicktime':'video/quicktime','video/webm':'video/webm',
   'audio/mpeg':'audio/mpeg','audio/mp3':'audio/mpeg','audio/aac':'audio/aac',
   'audio/mp4':'audio/mp4','audio/m4a':'audio/mp4','audio/x-m4a':'audio/mp4',
   'audio/wav':'audio/wav','audio/x-wav':'audio/wav','audio/wave':'audio/wav','audio/vnd.wave':'audio/wav',
@@ -23,13 +24,15 @@ function matches(bytes,type) {
     case 'audio/wav': return (at(0,'RIFF') || at(0,'RF64')) && at(8,'WAVE');
     case 'audio/ogg': return at(0,'OggS');
     case 'audio/flac': return at(0,'fLaC');
+    case 'video/webm':
     case 'audio/webm': return starts(26,69,223,163);
     case 'audio/aac': return at(0,'ADIF') || (bytes[0]===255 && (bytes[1]&246)===240) || at(0,'ID3');
     case 'audio/mpeg': return at(0,'ID3') || (bytes[0]===255 && (bytes[1]&224)===224);
     default: {
       if (!at(4,'ftyp')) return false;
       const brands=type==='image/avif' ? ['avif','avis'] : type.startsWith('image/') ?
-        ['heic','heix','hevc','hevx','mif1','msf1'] : ['M4A ','M4B ','isom','iso2','mp41','mp42','qt  '];
+        ['heic','heix','hevc','hevx','mif1','msf1'] : type.startsWith('video/') ?
+        ['isom','iso2','iso4','iso5','iso6','mp41','mp42','avc1','M4V ','dash','qt  '] : ['M4A ','M4B ','isom','iso2','mp41','mp42','qt  '];
       // Major brand at byte 8, minor version at 12, then compatible brands.
       const boxSize=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(0);
       return brands.some(brand=>at(8,brand) ||
@@ -38,25 +41,38 @@ function matches(bytes,type) {
   }
 }
 
-async function readFile(request,mime,limit) {
-  const length=request.headers.get('content-length');
-  if (length!==null && (!/^\d+$/.test(length) || Number(length)>limit)) fail(413,'media_too_large');
-  if (!request.body) fail(400,'empty_media');
-  const reader=request.body.getReader(), chunks=[];
-  let size=0;
+// R2 accepts the incoming request stream directly when it carries a length.
+// For chunked requests, use one reusable R2 part buffer and bound bytes as they arrive.
+async function putChunked(bucket,key,body,options,limit) {
+  const reader=body.getReader(), buffer=new Uint8Array(5*1024*1024), parts=[];
+  let used=0, size=0, multipart;
   try {
     while (true) {
       const {done,value}=await reader.read();
       if (done) break;
       size+=value.byteLength;
-      if (size>limit) { await reader.cancel(); fail(413,'media_too_large'); }
-      chunks.push(value);
+      if (size>limit) fail(413,'media_too_large');
+      let at=0;
+      while (at<value.byteLength) {
+        if (used===buffer.length) {
+          multipart ||= await bucket.createMultipartUpload(key,options);
+          parts.push(await multipart.uploadPart(parts.length+1,buffer));
+          used=0;
+        }
+        const count=Math.min(buffer.length-used,value.byteLength-at);
+        buffer.set(value.subarray(at,at+count),used);
+        used+=count; at+=count;
+      }
     }
+    if (!size) fail(400,'empty_media');
+    const last=buffer.subarray(0,used);
+    if (!multipart) return await bucket.put(key,last,options);
+    parts.push(await multipart.uploadPart(parts.length+1,last));
+    return await multipart.complete(parts);
+  } catch (error) {
+    await Promise.allSettled([reader.cancel(),multipart?.abort()]);
+    throw error;
   } finally { reader.releaseLock(); }
-  if (!size) fail(400,'empty_media');
-  const blob=new Blob(chunks,{type:mime});
-  if (!matches(new Uint8Array(await blob.slice(0,96).arrayBuffer()),mime)) fail(415,'invalid_media');
-  return blob;
 }
 
 async function cleanupObjects(env) {
@@ -90,17 +106,38 @@ export async function upload(request,env,user,id) {
   }
   const mime=types[request.headers.get('content-type')?.toLowerCase().split(';')[0].trim()];
   if (typeof mime!=='string') fail(415,'invalid_media');
-  const kind=mime.startsWith('image/')?'photo':'audio';
-  const file=await readFile(request,mime,(kind==='photo'?12:25)*1024*1024);
+  // The existing database uses 'photo' for gallery slots and 'audio' for the soundtrack.
+  // The verified MIME type distinguishes videos within the gallery.
+  const kind=mime.startsWith('audio/')?'audio':'photo';
+  const limit=(mime.startsWith('video/') ? 50 : kind==='audio' ? 25 : 12)*1024*1024;
+  const length=request.headers.get('Content-Length');
+  if (length!==null && (!/^\d+$/.test(length) || Number(length)>limit)) fail(413,'media_too_large');
+  if (!request.body || (length!==null && Number(length)===0)) fail(400,'empty_media');
   const now=Date.now(), key='media/'+crypto.randomUUID();
   await db.prepare('INSERT INTO pending_media_objects(object_key,expires_at) VALUES(?,?)').bind(key,now+DAY).run();
-  await env.BUCKET.put(key,file,{httpMetadata:{contentType:mime}});
+  const options={httpMetadata:{contentType:mime}};
+  let size;
+  try {
+    const file=length===null ? await putChunked(env.BUCKET,key,request.body,options,limit)
+      : await env.BUCKET.put(key,request.body,options);
+    size=file.size;
+    if (size>limit) fail(413,'media_too_large');
+    if (!size || (length!==null && size!==Number(length))) fail(400,'invalid_media');
+    // Read only the signature of the private, unclaimed object before attaching it.
+    const prefix=await env.BUCKET.get(key,{range:{offset:0,length:Math.min(size,96)}});
+    if (!prefix) fail(503,'storage_unavailable');
+    if (!matches(new Uint8Array(await prefix.arrayBuffer()),mime)) fail(415,'invalid_media');
+  } catch (error) {
+    await db.prepare('UPDATE pending_media_objects SET expires_at=0 WHERE object_key=?').bind(key).run();
+    await collectPublicationMedia(env);
+    throw error;
+  }
   // Every attempt writes a different immutable key. Only one claim can win,
   // so a retry cannot overwrite bytes already attached to a publication.
   const [claim]=await db.batch([
     db.prepare(`INSERT INTO publication_media(id,owner_id,object_key,kind,mime,size,state,created_at)
       SELECT ?,?,?,?,?,?,'staged',? WHERE EXISTS(SELECT 1 FROM pending_media_objects WHERE object_key=? AND expires_at>?)
-      ON CONFLICT(id) DO NOTHING`).bind(id,user,key,kind,mime,file.size,now,key,Date.now()),
+      ON CONFLICT(id) DO NOTHING`).bind(id,user,key,kind,mime,size,now,key,Date.now()),
     db.prepare('DELETE FROM pending_media_objects WHERE object_key=? AND EXISTS (SELECT 1 FROM publication_media WHERE object_key=?)').bind(key,key),
     db.prepare('UPDATE pending_media_objects SET expires_at=0 WHERE object_key=?').bind(key)
   ]);

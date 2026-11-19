@@ -1,5 +1,6 @@
 import {formatDate, getLanguage, getLocale} from './i18n.js';
 import {t} from './locales/friends-hub.js';
+import {galleryThumbnail} from './ui.js';
 import {shareText} from './locales/sharing.js';
 import {api, signInUrl} from './social-api.js';
 
@@ -142,7 +143,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
       const audience = {all:'all',selected:'selected',private:'private'}[day.mode] || 'private';
       return '<article class="fh-card panel"><button type="button" class="fh-day" data-act="go" data-id="shared/'+esc(enc(day.id))+
         '" data-fid="day:'+esc(day.id)+'"><span class="fh-cover'+(src?'':' fh-paper')+'">'+
-        (src?'<img src="'+esc(src)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':'<i aria-hidden="true"></i>')+
+        (src?galleryThumbnail(src,day.coverKind==='video'):'<i aria-hidden="true"></i>')+
         '</span><span class="fh-card-text"><time datetime="'+esc(day.date)+'">'+esc(fullDate(day.date))+'</time><strong>'+esc(day.title||t('untitled'))+
         '</strong></span></button>'+(owner?'<footer><span class="fh-audience">'+esc(shareText(audience))+'</span>'+
         button('access',shareText('access'),{id:day.id,style:'fh-text'})+'</footer>':day.owner?'<footer><button type="button" class="fh-byline" data-act="go" data-id="'+esc(personRoute(day.owner))+

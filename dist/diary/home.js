@@ -3,8 +3,8 @@ import {demos} from './demos.js';
 import {getLanguage} from './i18n.js';
 import {t as shellText} from './locales/shell.js';
 import {t} from './locales/views.js';
-import {visibleDayNotes} from './store.js';
-import {editDayButton, noteList, esc, formatDate, icon, localDate} from './ui.js';
+import {isGalleryVideo, visibleDayNotes} from './store.js';
+import {editDayButton, noteList, galleryThumbnail, esc, formatDate, icon, localDate} from './ui.js';
 
 let selectedBeforeLanguageChange;
 
@@ -36,7 +36,7 @@ export function mountHome(root, days, ctx) {
     const descriptionId = 'home-day-'+day.id;
     return '<article class="home-day" data-home-day="'+esc(day.id)+'"><div class="home-memory-row">'+
       '<button type="button" class="home-memory" data-action="'+(isRecent?'recent':'today-entry')+'" data-mood="'+postcardMood(day)+'">'+
-      (photo ? '<img src="'+esc(photo)+'" alt="">' : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
+      (photo ? galleryThumbnail(photo,isGalleryVideo(isRecent ? recentPhoto : personalPhoto)) : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
       '<span class="home-memory-copy" id="'+esc(descriptionId)+'"><small><time datetime="'+esc(day.date)+'">'+date+'</time>'+
       (day.status==='draft'?' · '+t('draft'):'')+'</small> <strong>'+name+'</strong></span>'+icon('chevron',16)+'</button>'+
       editDayButton(day.id,descriptionId)+
@@ -51,7 +51,8 @@ export function mountHome(root, days, ctx) {
     '</h2><p>' + t(hasDraft ? 'revisitDraft' : 'makePostcard') +
     '</p><button type="button" class="ab-action" data-today>' + icon(entry?.status === 'ready' && !hasDraft ? 'book' : 'pen',18) + esc(action) +
     '</button></div><div class="ab-art" aria-hidden="true"><div class="ab-slip-stack diary-print-stack">' +
-    '<div class="ab-slip-back"></div><div class="ab-slip-mid"></div><div class="diary-print"><img data-cover alt=""><div><i></i><span data-cover-label></span></div></div></div></div></section>' +
+    '<div class="ab-slip-back"></div><div class="ab-slip-mid"></div><div class="diary-print">'+
+    (personalUrl && isGalleryVideo(personalPhoto) ? galleryThumbnail(personalUrl,true) : '<img data-cover alt="">')+'<div><i></i><span data-cover-label></span></div></div></div></div></section>' +
     '<section class="ab-player"><div class="ab-player-head"><h2>'+t('collection')+'</h2><span class="ab-count" data-count></span></div>' +
     '<div class="sample-picker"><label><span class="ab-sr">'+t('chooseExample')+'</span><select data-slide>' +
     demos.map((day,i) => '<option value="'+i+'">'+esc(day.title)+'</option>').join('') + '</select>'+icon('chevron',16)+'</label>' +
@@ -82,7 +83,8 @@ export function mountHome(root, days, ctx) {
   function paint() {
     const day = demos[index];
     find('.ab-hero').dataset.mood = personalMood || postcardMood(day);
-    find('[data-cover]').src = personalUrl || day.photos[0].src;
+    const cover = find('[data-cover]');
+    if (cover) cover.src = personalUrl || day.photos[0].src;
     find('[data-cover-label]').textContent = formatDate(personalUrl ? entry.date : day.date);
     find('[data-count]').textContent = t('exampleCount',{position:index + 1,total:demos.length});
     find('[data-slide]').value = index;

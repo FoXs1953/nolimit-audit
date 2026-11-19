@@ -108,7 +108,7 @@ function describe(day,recipe) {
   const lower=value=>value.toLocaleLowerCase(getLocale());
   return {...recipe,moodLabel,treatment,reasons:{
     text:t(normalizeMood(day.moodOverride)?'chosen':'inferred',{mood:lower(moodLabel)})+' '+t('technique',{technique:lower(treatment)}),
-    photo:day.photos?.length ? t('color',{color:recipe.color.toUpperCase()}) : t('missingColor'),
+    photo:day.photos?.[0]?.kind==='video' ? t('videoColor') : day.photos?.length ? t('color',{color:recipe.color.toUpperCase()}) : t('missingColor'),
     music:music.kind==='link' ? t('linkTempo') : t(tempoSource,{bpm:fmt.format(recipe.bpm)})+'. '+t('time',{seconds:fmt.format(recipe.interval/1000)})
   }};
 }

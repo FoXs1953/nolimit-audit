@@ -1,4 +1,4 @@
-self.DIARY_BUILD = "2116d10450a716f4";
+self.DIARY_BUILD = "6387d96d5cd5347a";
 self.DIARY_FILES = [
   "./ab.css",
   "./arttech-preview/index.html",
@@ -49,6 +49,8 @@ self.DIARY_FILES = [
   "./diary/sharing.js",
   "./diary/social-api.js",
   "./diary/store.js",
+  "./diary/theme.css",
+  "./diary/theme.js",
   "./diary/ui.js",
   "./diary/vendor/fflate-0.8.2.js",
   "./diary/vendor/fflate-LICENSE.txt",
