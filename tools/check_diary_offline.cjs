@@ -9,6 +9,9 @@ async function interruptibleOrigin(upstream) {
   let connected = true;
   const server = http.createServer(async (req, res) => {
     if (!connected) { req.socket.destroy(); return; }
+    if (req.url==='/index.html') {
+      res.writeHead(302,{location:'/'});res.end();return;
+    }
     try {
       const target = new URL(req.url.slice(1), upstream);
       const response = await fetch(target);
