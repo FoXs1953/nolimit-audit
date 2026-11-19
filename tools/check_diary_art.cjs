@@ -51,19 +51,21 @@ const cases=[
     for(const [lang,play,lastFrame,textLabel,title] of cases){
       await page.locator('[data-language="'+lang+'"]').click();
       await page.getByRole('heading',{name:title,exact:true}).waitFor();
+      await page.getByRole('button',{name:play,exact:true}).click();
+      const viewer=card('viewer');
+      await viewer.waitFor();
+      await card('viewer-photo').waitFor();
+      assert.ok(await viewer.evaluate(dialog=>dialog.open));
       if(lang==='ru'){
         await card('next').click();
         await card('next').click();
         await card('mute').click();
-        assert.equal(await page.evaluate(()=>window.__audio.at(-1).readyState),0);
         sendTrack();
       }
-      await page.getByRole('button',{name:play,exact:true}).waitFor();
       assert.equal(await card('counter').textContent(),lastFrame);
       assert.equal(await card('mute').getAttribute('aria-pressed'),'true');
       const target=await page.locator('.diary-card').evaluate(el=>
         2*parseFloat(el.style.getPropertyValue('--day-duration'))/1000);
-      await card('hero-play').click();
       await page.waitForFunction(start=>{
         const audio=window.__audio.at(-1);
         if (audio?.error) throw Error('Demo playback error '+audio.error.code+': '+audio.error.message);
@@ -72,16 +74,14 @@ const cases=[
       const startedAt=await page.evaluate(()=>window.__audio.at(-1).currentTime);
       assert.ok(startedAt-target<3,'Playback starts within the selected frame');
       await page.waitForFunction(start=>window.__audio.at(-1).currentTime>=start+.15,startedAt,{timeout:2500});
-      const visual=await page.locator('.diary-card').evaluate(el=>({
-        animation:getComputedStyle(el.querySelector('[data-card=photo]')).animationName,
-        paper:el.style.getPropertyValue('--day-paper'),motion:el.dataset.motion
-      }));
-      assert.equal(visual.animation,'day-float');assert.equal(visual.paper,'#9c6c33');
-      await card('hero-play').click();
-      await card('explain').click();
-      await page.getByRole('dialog').getByRole('heading',{name:textLabel,exact:true}).waitFor();
-      assert.equal(await page.getByRole('dialog').locator('.card-notes section').count(),3);
-      await page.getByRole('dialog').locator('button').first().click();
+      const animation=await card('viewer-photo').evaluate(img=>getComputedStyle(img).animationName);
+      assert.equal(animation,'day-float');
+      assert.equal(await page.locator('.diary-card').evaluate(el=>el.style.getPropertyValue('--day-paper')),'#9c6c33');
+      await card('close').click();
+      await viewer.waitFor({state:'hidden'});
+      assert.ok(await page.evaluate(()=>window.__audio.at(-1).paused),'Dismissing the photo stops its soundtrack');
+      assert.equal(await card('explain').count(),0);
+      await card('story').waitFor();
       await page.evaluate(()=>{window.__voices=[];});
       await card('read').click();
       const story=page.getByRole('dialog').locator('.card-original');
@@ -128,9 +128,10 @@ const cases=[
     await card('hero-play').click();
     await page.getByText('2 of 2',{exact:true}).waitFor();
     await page.getByText('Postcard finished',{exact:true}).waitFor({timeout:25000});
-    await card('hero-play').click();
+    await card('play').click();
     assert.equal(await card('counter').textContent(),'1 of 2');
-    await card('hero-play').click();
+    await card('close').click();
+    await card('viewer').waitFor({state:'hidden'});
 
     const comparisons=await page.evaluate(async()=>{
       const {makeRecipe,presentRecipe}=await import('./diary/art.js');
@@ -161,7 +162,7 @@ const cases=[
     assert.notEqual(base.motion,bright.motion);assert.equal(base.color,bright.color);assert.equal(base.interval,bright.interval);
     assert.equal(photo.color,'#bb2244');assert.equal(base.motion,photo.motion);assert.equal(base.interval,photo.interval);
     assert.ok(track.interval<base.interval);assert.equal(track.color,base.color);assert.equal(track.motion,base.motion);
-    assert.ok(external.interval<base.interval);assert.match(external.reasons.music,/song character/);
+    assert.ok(external.interval<base.interval);
     for(const d of Object.values(described)) {
       for(const k of ['title','caption','color','motion','interval','mood','voiceRate','voicePitch']) assert.equal(d[k],base[k]);
     }
@@ -174,7 +175,7 @@ const cases=[
       const {makeRecipe}=await import('./diary/art.js');
       const d={id:crypto.randomUUID(),date:'2026-11-19',status:'ready',contentLanguage:'en',
         text:'Quiet moon above the bridge. I carried the camera.',photos:[{id:'moon',name:'My photograph',src:'./diary/media/moon.jpg',color:'#345678'}],
-        music:{kind:'link',name:'The piece I chose',url:'https://example.com/my-song',energy:'bright'},moments:[]};
+        music:{kind:'link',name:'The piece I chose',url:'https://bandcamp.com/track/test-song',energy:'bright'},moments:[]};
       d.recipe=makeRecipe(d);d.title=d.recipe.title;d.caption=d.recipe.caption;
       await saveDay(d);return d.id;
     });
@@ -183,18 +184,20 @@ const cases=[
       await page.locator('[data-language="'+lang+'"]').click();
       await page.getByRole('button',{name:play,exact:true}).waitFor();
       await page.getByRole('heading',{name:'Quiet moon above the bridge',exact:true}).waitFor();
-      const link=page.locator('.card-track a');
-      assert.equal(await link.getAttribute('href'),'https://example.com/my-song');
-      assert.equal(await link.getAttribute('target'),'_blank');
-      assert.equal(await page.locator('.card-track strong').textContent(),'The piece I chose');
-      await card('hero-play').click();assert.ok((await card('status').textContent()).length>10);
       await card('hero-play').click();
+      const link=card('viewer').locator('a[href="https://bandcamp.com/track/test-song"]');
+      assert.equal(await link.getAttribute('target'),'_blank');
+      await card('viewer').getByText('The piece I chose',{exact:true}).first().waitFor();
+      assert.ok((await card('status').textContent()).length>10);
+      await card('close').click();
+      await card('viewer').waitFor({state:'hidden'});
     }
-    await context.route('https://example.com/my-song',route=>route.fulfill({contentType:'text/plain',body:'Test song'}));
+    await context.route('https://bandcamp.com/track/test-song',route=>route.fulfill({contentType:'text/plain',body:'Test song'}));
+    await card('hero-play').click();
     const opened=page.waitForEvent('popup');
-    await page.locator('.card-track a').click();
+    await card('viewer').locator('a[href="https://bandcamp.com/track/test-song"]').click();
     const songPage=await opened;
-    await songPage.waitForURL('https://example.com/my-song');
+    await songPage.waitForURL('https://bandcamp.com/track/test-song');
     await songPage.close();
     assert.deepEqual(errors,[]);
     console.log('PASS '+engine+': 15 translated example cards, generated titles, 3 independent art inputs, real audio, external song, original story, mobile controls and language-switch playback state');

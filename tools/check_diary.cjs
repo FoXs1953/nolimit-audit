@@ -52,8 +52,7 @@ async function ready(page) {
   assert.equal(new URL(page.url()).hash,'#today');
 }
 async function saveCard(page) {
-  await by(main(page),'Собрать открытку').click();
-  await by(main(page),'Сохранить день').click();
+  await by(main(page),'Сохранить открытку').click();
   await page.waitForURL(/#day\//);
   await by(main(page),'Оживить открытку').waitFor();
 }
@@ -87,16 +86,16 @@ async function journey(browser,dir,errors) {
     await story.waitFor();
     assert.equal(await story.inputValue(),note);
     await story.fill(firstDay+'. '+note+' Мы дошли до воды, когда тучи рассеялись.');
-    await by(main(page),'Собрать открытку').click();
+    await by(main(page),'Сохранить открытку').click();
     await page.getByText('Добавьте хотя бы одну фотографию.',{exact:true}).waitFor();
     await chooseFile(page,'Добавить фото',[path.join(media,'river.jpg'),path.join(media,'leaves.jpg')]);
     await by(main(page),'На обложку').waitFor();
-    await by(main(page),'Собрать открытку').click();
+    await by(main(page),'Сохранить открытку').click();
     await page.getByText('Выберите аудиофайл или добавьте ссылку на песню.',{exact:true}).waitFor();
     await by(main(page),'Ссылка').click();
     await page.getByRole('textbox',{name:'Ссылка на песню'}).fill('не адрес');
-    await by(main(page),'Собрать открытку').click();
-    await page.getByText('Добавьте HTTPS-ссылку на песню.',{exact:true}).waitFor();
+    await by(main(page),'Сохранить открытку').click();
+    await page.getByText('Добавьте ссылку на песню или видео.',{exact:true}).waitFor();
     await by(main(page),'Аудиофайл').click();
     await chooseFile(page,'Выбрать аудиофайл',makeTone());
     await by(main(page),'Заменить аудиофайл').waitFor();
@@ -104,15 +103,15 @@ async function journey(browser,dir,errors) {
     await page.reload();await story.waitFor();
     assert.ok((await story.inputValue()).includes(note));
     await by(main(page),'Заменить аудиофайл').waitFor();
-    await by(main(page),'Почему так?').click();await page.getByRole('dialog').getByText('Музыка',{exact:true}).waitFor();await closeSheet(page);
+    assert.equal(await page.locator('[data-ed-why],[data-ed-preview]').count(),0);
+    assert.equal(await by(main(page),'Сохранить открытку').count(),1);
     await layout(page);await saveCard(page);
     await page.getByRole('heading',{name:firstDay,exact:true}).waitFor();
-    await by(main(page),'Оживить открытку').click();await by(main(page),'Выключить звук').click();
-    await by(main(page),'Включить звук').click();
-    await by(main(page),'Следующее фото').click();await page.getByText('2 из 2',{exact:true}).waitFor();
-    await by(main(page),'Предыдущее фото').click();
-    await by(main(page),'Рассмотреть открытку целиком').click();
-    await page.getByRole('dialog').getByText(firstDay,{exact:true}).waitFor();
+    await by(main(page),'Оживить открытку').click();await by(page.getByRole('dialog'),'Выключить звук').click();
+    await by(page.getByRole('dialog'),'Включить звук').click();
+    await by(page.getByRole('dialog'),'Следующее фото').click();await page.getByRole('dialog').getByText('2 из 2',{exact:true}).waitFor();
+    await by(page.getByRole('dialog'),'Предыдущее фото').click();
+    assert.ok(await page.locator('[data-card="viewer-photo"]').isVisible());
     await page.goBack();await page.getByRole('dialog').waitFor({state:'hidden'});
     await by(main(page),/^Прочитать запись/,false).click();
     await page.getByRole('dialog').getByText(note,{exact:true}).waitFor();await closeSheet(page);
@@ -167,8 +166,8 @@ async function importOnCleanDevice(browser,zip,errors) {
     await by(dialog,'Восстановить').click();
     await by(main(page),new RegExp(revised),false).click();
     await page.getByRole('heading',{name:revised,exact:true}).waitFor();await layout(page);
-    await by(main(page),'Оживить открытку').click();await by(main(page),'Выключить звук').click();
-    await by(main(page),'Следующее фото').click();await page.getByText('2 из 2',{exact:true}).waitFor();
+    await by(main(page),'Оживить открытку').click();await by(page.getByRole('dialog'),'Выключить звук').click();
+    await by(page.getByRole('dialog'),'Следующее фото').click();await page.getByRole('dialog').getByText('2 из 2',{exact:true}).waitFor();
     await page.reload();await page.getByRole('heading',{name:revised,exact:true}).waitFor();
     console.log(engine+' 820px: ZIP imported through UI, saved photos and sound available after reload');
   } finally { await ctx.close(); }
