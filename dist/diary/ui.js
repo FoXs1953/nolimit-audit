@@ -46,11 +46,16 @@ export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
 })[c]);
 
-// A tiny time fragment makes Safari display the first frame of a paused clip.
-export function galleryThumbnail(src, video) {
-  return video
-    ? '<video muted playsinline preload="metadata" aria-hidden="true" src="'+esc(src)+'#t=0.001"></video>'
-    : '<img loading="lazy" src="'+esc(src)+'" alt="">';
+export function galleryPoster(asset) {
+  const poster=asset?.poster;
+  return typeof poster==='string' && poster.length<=48*1024 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(poster) ? poster : '';
+}
+
+export function galleryThumbnail(src, video, poster) {
+  if (!video) return '<img loading="lazy" src="'+esc(src)+'" alt="">';
+  const still=galleryPoster({poster});
+  return still ? '<img data-gallery-video loading="lazy" src="'+esc(still)+'" alt="">'
+    : '<span class="gallery-video-placeholder" data-gallery-video aria-hidden="true">'+icon('play',22)+'</span>';
 }
 
 export function localDate() {

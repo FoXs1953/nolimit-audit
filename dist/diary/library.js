@@ -106,7 +106,7 @@ export function mountLibrary(root, records, examples, ctx) {
     return '<article class="personal-card" data-mood="'+mood+'"'+coverStyle+'>'+
       '<button type="button" class="personal-open" data-id="'+esc(day.id)+'">'+
       '<span class="day-cover'+(image?'':' paper-cover')+'">'+
-      (image?galleryThumbnail(image,isGalleryVideo(day.photos[0])):'')+
+      (image?galleryThumbnail(image,isGalleryVideo(day.photos[0]),day.photos[0].poster):'')+
       '<time datetime="'+esc(day.date)+'" aria-label="'+dateLabel+'"><b>'+esc(formatDate(day.date,{day:'numeric'}))+'</b>'+
       '<span>'+esc(formatDate(day.date,{weekday:'long'}))+'</span></time>'+
       (draft?'<span class="day-draft">'+icon('pen',13)+t('draft')+'</span>':'')+'</span>'+

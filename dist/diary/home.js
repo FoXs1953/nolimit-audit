@@ -30,13 +30,14 @@ export function mountHome(root, days, ctx) {
   function dayPreview({day,notes}) {
     const isRecent = day.id === recent?.id;
     const photo = isRecent ? recentUrl : personalUrl;
+    const cover = isRecent ? recentPhoto : personalPhoto;
     const date = esc(formatDate(day.date,{day:'numeric',month:'long',year:'numeric'}));
     const name = esc(day.title || day.titleOverride || day.text || t('dayEntry'));
     const label = esc(shellText('delete'));
     const descriptionId = 'home-day-'+day.id;
     return '<article class="home-day" data-home-day="'+esc(day.id)+'"><div class="home-memory-row">'+
       '<button type="button" class="home-memory" data-action="'+(isRecent?'recent':'today-entry')+'" data-mood="'+postcardMood(day)+'">'+
-      (photo ? galleryThumbnail(photo,isGalleryVideo(isRecent ? recentPhoto : personalPhoto)) : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
+      (photo ? galleryThumbnail(photo,isGalleryVideo(cover),cover?.poster) : '<span class="home-memory-mark">'+icon('calendar',25)+'</span>')+
       '<span class="home-memory-copy" id="'+esc(descriptionId)+'"><small><time datetime="'+esc(day.date)+'">'+date+'</time>'+
       (day.status==='draft'?' · '+t('draft'):'')+'</small> <strong>'+name+'</strong></span>'+icon('chevron',16)+'</button>'+
       editDayButton(day.id,descriptionId)+
@@ -52,7 +53,7 @@ export function mountHome(root, days, ctx) {
     '</p><button type="button" class="ab-action" data-today>' + icon(entry?.status === 'ready' && !hasDraft ? 'book' : 'pen',18) + esc(action) +
     '</button></div><div class="ab-art" aria-hidden="true"><div class="ab-slip-stack diary-print-stack">' +
     '<div class="ab-slip-back"></div><div class="ab-slip-mid"></div><div class="diary-print">'+
-    (personalUrl && isGalleryVideo(personalPhoto) ? galleryThumbnail(personalUrl,true) : '<img data-cover alt="">')+'<div><i></i><span data-cover-label></span></div></div></div></div></section>' +
+    (personalUrl && isGalleryVideo(personalPhoto) ? galleryThumbnail(personalUrl,true,personalPhoto.poster) : '<img data-cover alt="">')+'<div><i></i><span data-cover-label></span></div></div></div></div></section>' +
     '<section class="ab-player"><div class="ab-player-head"><h2>'+t('collection')+'</h2><span class="ab-count" data-count></span></div>' +
     '<div class="sample-picker"><label><span class="ab-sr">'+t('chooseExample')+'</span><select data-slide>' +
     demos.map((day,i) => '<option value="'+i+'">'+esc(day.title)+'</option>').join('') + '</select>'+icon('chevron',16)+'</label>' +

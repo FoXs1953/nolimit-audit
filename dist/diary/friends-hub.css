@@ -115,7 +115,7 @@
 .fh-card button:focus-visible { outline-offset: -3px; }
 .fh-day { display: grid; text-align: start; width: 100%; padding: 0; }
 .fh-cover { position: relative; width: 100%; aspect-ratio: 1.93; overflow: hidden; background: #e9edf2; display: block; }
-.fh-cover :is(img,video) { width: 100%; height: 100%; display: block; object-fit: cover; }
+.fh-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .fh-paper { background: repeating-linear-gradient(0deg,transparent 0 18px,#8193a31d 18px 19px),#f5f1e8; }
 .fh-paper i { display: block; height: 100%; width: 1px; background: #b68d7635; margin-left: 12%; }
 .fh-card-text { display: grid; padding: 16px; gap: 6px; min-width: 0; }

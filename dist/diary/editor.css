@@ -23,8 +23,8 @@
 .ed-thumbs{display:flex;gap:7px;overflow-x:auto;padding:5px 4px 8px}
 .ed-thumb{position:relative;flex:0 0 64px;border-radius:12px;height:64px;padding:3px;overflow:hidden;border:2px solid transparent}
 .ed-thumb[aria-pressed="true"]{border-color:var(--blue)}
-.ed-thumb img,.ed-thumb video{display:block;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none}
-.ed-thumb video,.ed-mini-paper video{background:#192333}
+.ed-thumb img,.ed-thumb .gallery-video-placeholder{width:100%;height:100%;border-radius:6px;pointer-events:none}
+.ed-thumb img{display:block;object-fit:cover}
 .ed-video-badge{position:absolute;right:5px;bottom:5px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#132033dd;color:#fff;pointer-events:none}
 .ed-video-player{display:block;width:100%;max-height:350px;aspect-ratio:16/9;object-fit:contain;margin:0 0 15px;border-radius:14px;background:#142032}
 .ed-photo-line{margin-top:5px;align-items:baseline}
@@ -81,7 +81,8 @@
 .ed-mini-paper{position:relative;min-width:0;margin:0 2px;padding:5px 5px 6px;border-radius:7px;background:linear-gradient(135deg,#fff,#f4f8ff);border-bottom:3px solid var(--ed-wash);box-shadow:0 9px 20px #082a6f55;transform:rotate(var(--ed-tilt))}
 .ed-mini-paper:before{content:'';position:absolute;inset:0;z-index:-1;transform:translate(3px,-4px) rotate(7deg);border-radius:7px;background:#ddeaff99}
 .ed-mini-paper [data-ed-frame]{position:relative}
-.ed-mini-paper img,.ed-mini-paper video,.ed-mini-paper [data-ed-empty-frame]{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:3px;pointer-events:none}
+.ed-mini-paper img,.ed-mini-paper .gallery-video-placeholder,.ed-mini-paper [data-ed-empty-frame]{width:100%;aspect-ratio:1/1;border-radius:3px;pointer-events:none}
+.ed-mini-paper img,.ed-mini-paper [data-ed-empty-frame]{display:block;object-fit:cover}
 .ed-mini-paper [data-ed-empty-frame]{background:linear-gradient(145deg,#d5e5ff,#8cb6f4)}
 .ed-mini-paper figcaption{margin-top:4px;color:#435d7f;font-size:.58rem;font-weight:620}
 .ed-custom{margin-top:17px}

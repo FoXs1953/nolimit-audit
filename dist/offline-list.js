@@ -1,4 +1,4 @@
-self.DIARY_BUILD = "6387d96d5cd5347a";
+self.DIARY_BUILD = "6b693daf8fa129f2";
 self.DIARY_FILES = [
   "./ab.css",
   "./arttech-preview/index.html",

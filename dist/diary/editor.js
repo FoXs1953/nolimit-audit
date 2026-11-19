@@ -1,6 +1,7 @@
 import { galleryBytes, isGalleryVideo, MAX_GALLERY_BYTES, saveDay } from './store.js';
 import { makeRecipe, moodOptions, normalizeMood } from './art.js';
 import { musicLink } from './music-link.js';
+import { galleryPoster, galleryThumbnail } from './ui.js';
 import { formatDate, getLanguage, getLocale, translator } from './i18n.js';
 import { messages } from './locales/editor.js';
 
@@ -28,6 +29,17 @@ function clamp(value, low, high) { return Math.min(high, Math.max(low,value)); }
 
 const videoTypes = {mp4:'video/mp4', m4v:'video/mp4', webm:'video/webm', mov:'video/quicktime'};
 
+function capturePoster(video) {
+  try {
+    const scale=Math.min(1,256/Math.max(video.videoWidth,video.videoHeight));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
+    canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
+    canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);
+    return galleryPoster({poster:canvas.toDataURL('image/jpeg',.68)});
+  } catch { return ''; }
+}
+
 async function attachmentFromFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   const extensionType = Object.hasOwn(videoTypes,ext) ? videoTypes[ext] : '';
@@ -41,22 +53,38 @@ async function attachmentFromFile(file) {
   const blob = file.type === type ? file : file.slice(0,file.size,type);
   const src = URL.createObjectURL(blob);
   const video = document.createElement('video');
-  video.preload = 'metadata';
+  video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   let timer;
   try {
-    await new Promise((resolve,reject)=>{
+    const poster=await new Promise((resolve,reject)=>{
       const failed = ()=>reject(Error(t('videoDecode')));
       timer = setTimeout(failed,12000);
       video.onerror = failed;
-      video.onloadedmetadata = ()=>video.videoWidth && video.videoHeight ? resolve() : failed();
+      const frameReady = ()=>{
+        if (!video.seeking && video.readyState>=video.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
+          resolve(capturePoster(video));
+        }
+      };
+      video.onloadedmetadata = ()=>{
+        if (!video.videoWidth || !video.videoHeight) {failed();return;}
+        clearTimeout(timer);
+        // Browsers may withhold frames for a paused video on a low-data connection.
+        timer=setTimeout(()=>resolve(''),1500);
+        video.onerror=()=>resolve('');
+        if (video.readyState>=video.HAVE_CURRENT_DATA) {frameReady();return;}
+        if (Number.isFinite(video.duration) && video.duration>0) {
+          try {video.currentTime=Math.min(.08,video.duration/2);} catch { /* loadeddata can still supply the first frame. */ }
+        }
+      };
+      video.onloadeddata=video.onseeked=frameReady;
       video.src = src;
     });
-    return {id:crypto.randomUUID(), kind:'video', name:file.name, blob};
+    return {id:crypto.randomUUID(), kind:'video', name:file.name, blob, ...(poster ? {poster} : {})};
   } finally {
     clearTimeout(timer);
-    video.onloadedmetadata = video.onerror = null;
+    video.onloadedmetadata = video.onloadeddata = video.onseeked = video.onerror = null;
     video.removeAttribute('src');
     video.load();
     URL.revokeObjectURL(src);
@@ -321,15 +349,19 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     return limited(asset.x??50,0,100)+'% '+limited(asset.y??50,0,100)+'%';
   }
   function still(asset) {
+    if (isGalleryVideo(asset)) {
+      const poster=galleryPoster(asset);
+      return galleryThumbnail('',true,poster)+(poster ? '<span class="ed-video-badge" aria-hidden="true">'+ctx.icon('play',12)+'</span>' : '');
+    }
     const url=assetUrl(asset);
     if (!url) return '<span data-ed-empty-frame aria-hidden="true"></span>';
-    if (isGalleryVideo(asset)) {
-      return '<video muted playsinline preload="metadata" aria-hidden="true" tabindex="-1" src="'+esc(url)+'#t=0.001"></video>'+
-        '<span class="ed-video-badge" aria-hidden="true">'+ctx.icon('play',12)+'</span>';
-    }
     return '<img alt="" src="'+esc(url)+'" style="object-position:'+positionOf(asset)+'">';
   }
   let coverAsset;
+  function pauseSelectedVideo() {
+    const video=$('[data-ed-selected-video]');
+    if (video && !video.paused) video.pause();
+  }
   function paintPreview() {
     if (disposed) return;
     const recipe=makeRecipe(stateForRecipe());
@@ -358,7 +390,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   }
   function paintPhotos() {
     const box=$('[data-ed-gallery]');
-    box.querySelector('video[controls]')?.pause();
+    pauseSelectedVideo();
     box.replaceChildren();
     if(!draft.photos.some(p=>p.id===selected)) selected=draft.photos[0]?.id;
     $('[data-ed-count]').textContent=draft.photos.length+' / 6';
@@ -377,8 +409,9 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     ].map(([op,label,icon,disabled])=>
       `<button type="button" data-ed-photo-op="${op}"${disabled?' disabled':''}>${ctx.icon(icon,17)}<span>${t(label)}</span></button>`
     ).join('');
+    const poster=galleryPoster(asset);
     const preview=isGalleryVideo(asset)
-      ? `<video class="ed-video-player" data-ed-selected-video controls playsinline preload="metadata" aria-label="${esc(asset.name)}" src="${esc(assetUrl(asset))}"></video>`
+      ? `<video class="ed-video-player" data-ed-selected-video controls playsinline preload="none"${poster?' poster="'+esc(poster)+'"':''} aria-label="${esc(asset.name)}" src="${esc(assetUrl(asset))}"></video>`
       : `<details class="ed-crop"><summary>${t('crop')}</summary><div class="ed-crop-body"><div class="ed-crop-frame">${still(asset)}</div><div>
           <label class="ed-field">${t('horizontal')}<input type="range" min="0" max="100" data-ed-crop="x" value="${limited(asset.x??50,0,100)}"></label>
           <label class="ed-field">${t('vertical')}<input type="range" min="0" max="100" data-ed-crop="y" value="${limited(asset.y??50,0,100)}"></label>
@@ -593,10 +626,10 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   on($('[data-ed-save]'),'click',finish);
   on(root,'play',e=>{
     if(e.target.matches('audio, video[controls]')) {
-      for (const other of root.querySelectorAll('audio,video[controls]')) if(other!==e.target) other.pause();
+      for (const other of root.querySelectorAll('audio,video[controls]')) if(other!==e.target && !other.paused) other.pause();
     }
   },true);
-  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();$('[data-ed-current-file] audio')?.pause();$('[data-ed-selected-video]')?.pause();}});
+  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();$('[data-ed-current-file] audio')?.pause();pauseSelectedVideo();}});
   on(window,'pagehide',queueDraft);
   paintMoments();paintPhotos();showMode();paintPreview();viewStatus();
   function cleanup() {
@@ -604,7 +637,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     if(seq>persisted) queueDraft();
     disposed=true;controller.abort();clearTimeout(timer);
     $('[data-ed-current-file] audio')?.pause();
-    $('[data-ed-selected-video]')?.pause();
+    pauseSelectedVideo();
     for (const url of urls.values()) URL.revokeObjectURL(url);
     urls.clear();
   }
