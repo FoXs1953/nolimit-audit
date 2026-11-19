@@ -21,6 +21,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   const audioLink=music.kind==='link' ? musicLink(music.url) : null;
   const song=audioLink?.url || (music.kind==='link' ? webAddress(music.url) : '');
   const embedded=['youtube','spotify'].includes(audioLink?.provider);
+  const film=audioLink?.provider==='youtube';
   const html=(key,values)=>esc(t(key,values));
   function urlFor(media) {
     if (!media) return '';
@@ -38,8 +39,9 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   const startAt=audioLink?.start || 0;
   let resumeTime=Number.isFinite(viewState?.time) ? viewState.time : startAt;
   let pendingSeek=audio && resumeTime>0 ? resumeTime : null;
+  let providerPlaying=false;
   let provider=null, duration=0, timer=0, playRequest=0, fallbackClock=0, fallbackOffset=0;
-  let trigger=null, scrollStyle='', utterance=null, closingHistory=false;
+  let trigger=null, scrollStyle='', utterance=null, closingHistory=false, expanded=false;
   const speech=env.speechSynthesis;
   speech?.getVoices();
   const sourceName=music.name || t('dayMusic');
@@ -59,24 +61,28 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '<div class="ab-art card-art"><button class="card-print" type="button" data-card="zoom" aria-label="'+html('zoom')+'" aria-haspopup="dialog">'+
     '<i class="card-back" aria-hidden="true"></i><i class="card-middle" aria-hidden="true"></i><span class="card-print-paper">'+
     '<span class="card-print-clip"><img data-card="photo" alt=""></span><span class="card-paper-foot"><span>'+esc(date)+'</span><span data-card="paper-count"></span></span></span></button></div></section>'+
-    '<section class="card-story" data-card="story"><h2>'+html('story')+'</h2><p lang="'+lang+'">'+esc(summary.slice(0,380))+(summary.length>380?'…':'')+'</p>'+
-    '<button type="button" data-card="read">'+html('read')+icon('chevron',15)+'</button></section>'+
-    '<section class="ab-evidence"><h2>'+html('folder')+'</h2>'+
-    (demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('options','more',t('options')))+
-    (demo ? action('credits','info',t('credits')) : '')+'</section>'+
-    '<dialog class="card-viewer" data-card="viewer" aria-labelledby="card-viewer-title"><div class="viewer-content">'+
+    (film?'':'<section class="card-story" data-card="story"><h2>'+html('story')+'</h2><p lang="'+lang+'">'+esc(summary.slice(0,380))+(summary.length>380?'…':'')+'</p>'+
+    '<button type="button" data-card="read">'+html('read')+icon('chevron',15)+'</button></section>')+
+    '<dialog class="card-viewer'+(film?' card-film':'')+'" data-card="viewer" '+(film?'open data-inline role="region" aria-labelledby="card-film-title"':'aria-labelledby="card-viewer-title"')+'><div class="viewer-content">'+
+    (film?'<header class="film-heading"><h2 id="card-film-title">'+html('dayVideo')+'</h2></header>':'')+
     '<header class="viewer-header"><div><small>'+esc(date)+'</small><h2 id="card-viewer-title" lang="'+lang+'">'+esc(recipe.title)+'</h2></div>'+
     control('close','close','close')+'</header><div class="viewer-grid'+(embedded?' has-provider':'')+'">'+
-    '<figure class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt=""></div>'+
-    '<figcaption lang="'+lang+'">'+esc(recipe.caption)+'</figcaption></figure>'+
-    '<div class="viewer-details"><div class="viewer-music"><span class="viewer-music-glyph">'+icon('music',22)+'</span><div><small>'+html('dayMusic')+'</small><strong>'+esc(sourceName)+'</strong></div></div>'+
-    '<div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev','previous')+control('play','play','play','viewer-play')+control('next','next','next')+'</div>'+
+    '<div class="viewer-figure"><div class="viewer-photo-well"><img data-card="viewer-photo" alt=""></div></div>'+
+    '<div class="viewer-details">'+
+    (film?'<div class="viewer-provider" data-card="provider"></div>':'')+
+    '<div class="viewer-music"><span class="viewer-music-glyph">'+icon(film?'play':'music',20)+'</span><div>'+ (film?'':'<small>'+html('dayMusic')+'</small>')+'<strong>'+esc(sourceName)+'</strong></div></div>'+
+    (film?'':'<div class="viewer-provider" data-card="provider"'+(embedded?'':' hidden')+'></div>')+
+    '<p class="viewer-status" role="status" data-card="status"></p>'+
+    (song?'<a class="viewer-source" data-card="source" href="'+esc(song)+'" target="_blank" rel="noopener noreferrer">'+html(film?'openVideo':'openSong')+' ↗</a>':'')+
+    '</div><div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev','previous')+control('play','play','play','viewer-play')+control('next','next','next')+'</div>'+
     '<span class="viewer-count" data-card="counter"></span><button type="button" class="viewer-control viewer-mute" data-card="mute"></button></div>'+
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
-    '<div class="viewer-provider" data-card="provider"'+(embedded?'':' hidden')+'></div>'+
-    '<p class="viewer-status" role="status" data-card="status"></p>'+
-    (song?'<a class="viewer-source" data-card="source" href="'+esc(song)+'" target="_blank" rel="noopener noreferrer">'+html('openSong')+' ↗</a>':'')+
-    '</div></div></div></dialog></div>';
+    '<p class="viewer-caption" lang="'+lang+'">'+esc(recipe.caption)+'</p>'+
+    '</div></div></dialog>'+
+    '<section class="ab-evidence"><h2>'+html('folder')+'</h2>'+
+    (film?action('read','document',t('read')):'')+
+    (demo ? action('copy','folder',t('copy')) : action('edit','document',t('edit'))+action('options','more',t('options')))+
+    (demo ? action('credits','info',t('credits')) : '')+'</section></div>';
   const el=key=>root.querySelector('[data-card="'+key+'"]'), frame=root.querySelector('.diary-card'), viewer=el('viewer');
   frame.style.setProperty('--day-paper',recipe.color);
   frame.style.setProperty('--day-tilt',recipe.tilt+'deg');
@@ -85,7 +91,10 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   el('hero').dataset.mood=recipe.mood;
   frame.classList.toggle('is-still',Boolean(ctx.reducedMotion));
   for (const id of ['prev','next','scrub']) el(id).hidden=photos.length<2;
-  el('mute').hidden=!audio && audioLink?.provider!=='youtube';
+  el('play').hidden=film;
+  el('mute').hidden=!audio;
+  el('counter').hidden=photos.length<2;
+  if(film && photos.length<2) viewer.querySelector('.viewer-controls').hidden=true;
   function notice(text='') {if(!destroyed)el('status').textContent=text;}
   function buttons() {
     if(destroyed)return;
@@ -146,7 +155,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     if(target!==position){position=target;paint();}
   }
   function begin() {
-    if(destroyed || !viewer.open)return;
+    if(destroyed || !expanded)return;
     if(!playing){playing=true;fallbackClock=performance.now();timer=setInterval(tick,180);}
     wanted=true;finished=false;buttons();
   }
@@ -167,29 +176,37 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     finished=false;paint();
   }
   function pause() {
-    wanted=false;playRequest++;stopClock();
-    audio?.pause();provider?.pause();buttons();
+    wanted=false;providerPlaying=false;playRequest++;stopClock();
+    audio?.pause();provider?.pause({keepAvailable:film && !destroyed});buttons();
   }
   function playAudio() {
     const id=++playRequest;
     if(!audio.getAttribute('src'))audio.src=audioSrc;
     audio.play().catch(()=>{
-      if(destroyed || id!==playRequest || !viewer.open)return;
+      if(destroyed || id!==playRequest || !expanded)return;
       stopClock();wanted=false;buttons();notice(t('audioUnavailable'));
     });
   }
   function play() {
-    if(!viewer.open)return;
+    if(!expanded)return;
     if(finished){position=0;fallbackOffset=0;pendingSeek=audio?0:null;resumeTime=startAt;paint();applySeek();provider?.seek(startAt);}
     finished=false;wanted=true;stopSpeech();notice();
     if(audio) {if(audio.readyState<2)notice(t('loadingMusic'));playAudio();}
+    else if(providerPlaying) begin();
     else if(provider) {notice(t('loadingMusic'));provider.play();}
     else {begin();if(song)notice(t('externalSong'));}
     buttons();
   }
   function openViewer(fromHistory=false) {
-    if(destroyed || viewer.open || closingHistory)return;
+    if(destroyed || expanded || closingHistory)return;
     trigger=document.activeElement;scrollStyle=document.body.style.overflow;
+    if(film){
+      viewer.close();
+      viewer.removeAttribute('data-inline');
+      viewer.removeAttribute('role');
+      viewer.setAttribute('aria-labelledby','card-viewer-title');
+    }
+    expanded=true;
     viewer.showModal();document.body.style.overflow='hidden';
     el('close').focus({preventScroll:true});
     if(!fromHistory) {
@@ -198,8 +215,16 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     }
   }
   function closeViewer(useHistory=true) {
-    if(!viewer.open)return;
-    pause();viewer.close();document.body.style.overflow=scrollStyle;
+    if(!expanded)return;
+    expanded=false;
+    pause();viewer.close();
+    if(film){
+      viewer.setAttribute('role','region');
+      viewer.setAttribute('aria-labelledby','card-film-title');
+      viewer.setAttribute('data-inline','');
+      viewer.open=true;
+    }
+    document.body.style.overflow=scrollStyle;
     if(trigger?.isConnected)trigger.focus({preventScroll:true});
     if(useHistory && history.state?.cardViewer===day.id){
       closingHistory=true;history.back();
@@ -214,7 +239,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   viewer.addEventListener('cancel',event=>{event.preventDefault();closeViewer();},opts);
   viewer.addEventListener('click',event=>{if(event.target===viewer)closeViewer();},opts);
   viewer.addEventListener('keydown',event=>{
-    if(event.target.matches('input,iframe') || event.altKey || event.ctrlKey || event.metaKey)return;
+    if(!expanded || event.target.matches('input,iframe') || event.altKey || event.ctrlKey || event.metaKey)return;
     if(event.key==='ArrowLeft' || event.key==='ArrowRight'){
       event.preventDefault();locate(position+(event.key==='ArrowLeft'?-1:1));
     }
@@ -285,11 +310,13 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   env.addEventListener('pagehide',()=>{pause();stopSpeech();},opts);
   function providerState(state) {
     if(destroyed)return;
+    providerPlaying=state==='playing';
     if(state==='playing') {
-      if(!viewer.open || document.hidden){provider?.pause();return;}
-      begin();notice();
+      if((!expanded && !film) || document.hidden){provider?.pause();return;}
+      if(expanded)begin();
+      notice();
     }else if(state==='buffering'){
-      if(viewer.open){stopClock();wanted=true;buttons();notice(t('loadingMusic'));}
+      if(expanded){stopClock();wanted=true;buttons();notice(t('loadingMusic'));}
     }else if(state==='paused' || state==='ended'){
       if(state==='ended'){finish();return;}
       stopClock();wanted=false;buttons();notice();
@@ -317,10 +344,10 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   if(audio){
     audio.preload='metadata';audio.muted=muted;audio.volume=.83;
     audio.addEventListener('loadedmetadata',()=>{duration=audio.duration;applySeek();},opts);
-    audio.addEventListener('playing',()=>{if(viewer.open && wanted){begin();notice();}else audio.pause();},opts);
+    audio.addEventListener('playing',()=>{if(expanded && wanted){begin();notice();}else audio.pause();},opts);
     audio.addEventListener('waiting',()=>{if(wanted){stopClock();buttons();notice(t('loadingMusic'));}},opts);
     audio.addEventListener('error',()=>{
-      if(viewer.open){stopClock();wanted=false;buttons();notice(t('audioUnavailable'));}
+      if(expanded){stopClock();wanted=false;buttons();notice(t('audioUnavailable'));}
     },opts);
     audio.addEventListener('ended',()=>{position=Math.max(0,photos.length-1);paint();finish();},opts);
     if(bundled){
@@ -329,14 +356,14 @@ export function mountPlayer(root,day,ctx,viewState={}) {
         if(destroyed || !blob)return;
         const time=pendingSeek ?? audio.currentTime;
         pendingSeek=time;audio.src=urlFor({blob});
-        if(viewer.open && wanted)playAudio();
+        if(expanded && wanted)playAudio();
       }).catch(()=>{});
     }else audio.src=audioSrc;
   }
   paint();buttons();
   const cleanup=()=>{
-    if(viewer.open)closeViewer(false);
-    pause();destroyed=true;own.abort();stopSpeech();provider?.destroy();
+    if(expanded)closeViewer(false);
+    destroyed=true;pause();own.abort();stopSpeech();provider?.destroy();
     if(audio){audio.removeAttribute('src');audio.load();}
     urls.forEach(url=>URL.revokeObjectURL(url));
   };

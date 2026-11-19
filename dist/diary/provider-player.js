@@ -178,7 +178,7 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
       if (ready) playReady();
       else watch('unavailable',18000);
     },
-    pause() {
+    pause({keepAvailable=false}={}) {
       const cancellingSpotifyStart=link.provider==='spotify' && requested;
       requested=false;
       clearTimeout(deadline);
@@ -187,6 +187,7 @@ export function mountProvider(container,link,{onState,onDuration,onError,title}=
         // Even a native iframe which did not establish its JS connection
         // may have been started through its own controls.
         generation++;player?.destroy();player=null;failed=true;
+        if(keepAvailable) mount();
       }
       if (cancellingSpotifyStart) {
         lastState='paused';onState?.('paused');

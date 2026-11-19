@@ -5,6 +5,87 @@ const {chromium,webkit}=require('playwright');
 const engine=process.env.ENGINE || 'chromium';
 const base=new URL(process.argv[2] || 'http://127.0.0.1:8000/');
 
+async function verifyVideoPostcard(page) {
+  const videoId='M7lc1UVf-VE';
+  const song='https://youtu.be/'+videoId+'?t=5';
+  await page.route('https://www.youtube.com/embed/'+videoId+'**',route=>route.fulfill({
+    contentType:'text/html',body:`<button>Native Play</button><script>
+      document.querySelector('button').onclick=()=>parent.postMessage('native-play',new URL(location.href).searchParams.get('origin'));
+    </script>`
+  }));
+  const id=await page.evaluate(async song=>{
+    const {demos}=await import('./diary/demos.js');
+    const {saveDay}=await import('./diary/store.js');
+    const day=structuredClone(demos[0]);
+    day.id=crypto.randomUUID();
+    delete day.demo;
+    day.photos=day.photos.slice(0,1);
+    day.music={kind:'link',name:'Attached film',url:song};
+    await saveDay(day);
+    const trace=window.videoTrace={instances:0,playing:false,plays:0,time:5};
+    window.YT={Player:class {
+      constructor(frame,{events}) {
+        this.events=events;
+        this.receive=event=>{
+          if(event.source===frame.contentWindow && event.data==='native-play'){
+            trace.time=37;
+            this.playVideo();
+          }
+        };
+        window.addEventListener('message',this.receive);
+        trace.instances++;
+        queueMicrotask(()=>events.onReady());
+      }
+      playVideo(){trace.plays++;trace.playing=true;this.events.onStateChange({data:1});}
+      pauseVideo(){trace.playing=false;this.events.onStateChange({data:2});}
+      seekTo(time){trace.time=time;}
+      getDuration(){return 180;}
+      getCurrentTime(){return trace.time;}
+      destroy(){window.removeEventListener('message',this.receive);}
+    }};
+    return day.id;
+  },song);
+  await page.setViewportSize({width:1360,height:900});
+  await page.goto(new URL('#day/'+id,base).href);
+  const card=key=>page.locator('[data-card="'+key+'"]');
+  const viewer=card('viewer'), iframe=card('provider').locator('iframe');
+  await page.waitForFunction(()=>window.videoTrace.instances===1);
+  assert.equal(await iframe.isVisible(),true,'The attached video is visible on the day page');
+  assert.equal(await iframe.count(),1);
+  assert.equal(await viewer.evaluate(el=>el.matches(':modal')),false);
+  assert.equal(await page.evaluate(()=>window.videoTrace.plays),0,'The day opens silently');
+  const native=iframe.contentFrame();
+  await native.getByRole('button',{name:'Native Play'}).click();
+  await page.waitForFunction(()=>window.videoTrace.playing);
+  const nativeDocument=await native.locator('html').elementHandle();
+  await card('hero-play').click();
+  await page.waitForSelector('[data-card="viewer"]:modal');
+  assert.equal(await page.evaluate(()=>window.videoTrace.time),37,'Opening keeps the playback position');
+  for(const key of ['play','mute','prev','next','counter']){
+    assert.equal(await card(key).isVisible(),false,'A single-photo video postcard hides redundant '+key);
+  }
+  const photo=viewer.locator('.viewer-photo-well');
+  const [desktopPhoto,desktopVideo]=await Promise.all([photo.boundingBox(),iframe.boundingBox()]);
+  assert.ok(Math.abs(desktopPhoto.y-desktopVideo.y)<=2,'Photo and video have a common top edge on desktop');
+  assert.ok(Math.abs(desktopPhoto.width-desktopVideo.width)<=2,'Desktop media columns have equal widths');
+  for(const width of [390,320]){
+    await page.setViewportSize({width,height:780});
+    const [p,v,caption]=await Promise.all([photo.boundingBox(),iframe.boundingBox(),viewer.locator('.viewer-caption').boundingBox()]);
+    assert.ok(caption && p.y+p.height<=v.y+1 && v.y+v.height<=caption.y+1,'Phone order is photo, video, caption');
+    assert.ok(Math.abs(p.x-v.x)<=2 && Math.abs(p.width-v.width)<=2,'Phone media share horizontal margins');
+    assert.ok(v.width>=200 && v.height>=200 && v.x+v.width<=width,'The provider fits the phone viewport');
+  }
+  await page.goBack();
+  await page.waitForFunction(()=>!document.querySelector('[data-card="viewer"]').matches(':modal') && !window.videoTrace.playing);
+  await card('hero-play').click();
+  await page.waitForFunction(()=>document.querySelector('[data-card="viewer"]').matches(':modal') && window.videoTrace.playing);
+  await card('close').click();
+  await page.waitForFunction(()=>!document.querySelector('[data-card="viewer"]').matches(':modal') && !window.videoTrace.playing);
+  assert.equal(await iframe.isVisible(),true);
+  assert.equal(await nativeDocument.evaluate(el=>el===document.documentElement),true,'The original embedded document remains live');
+  assert.deepEqual(await page.evaluate(()=>[window.videoTrace.instances,window.videoTrace.time]),[1,37]);
+}
+
 async function verifySpotifyStart(page) {
   const service='https://open.spotify.com/embed/iframe-api/v1';
   await page.unroute(service);
@@ -141,6 +222,7 @@ async function verifySpotifyStart(page) {
     assert.deepEqual(result.nativeCommands.slice(-2),['pause','destroy']);
     assert.equal(result.spotifyError,'unavailable');
     await verifySpotifyStart(page);
+    await verifyVideoPostcard(page);
     assert.deepEqual(pageErrors,[]);
     console.log(engine+': music share links, official embed, gesture, timestamp, pause, provider restrictions, retry and cleanup verified');
   } finally {await browser.close();}
