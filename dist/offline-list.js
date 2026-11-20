@@ -1,4 +1,4 @@
-self.DIARY_BUILD = "cee05fb73aab27ff";
+self.DIARY_BUILD = "4c8ecbf0076727a9";
 self.DIARY_FILES = [
   "./ab.css",
   "./arttech-preview/index.html",
@@ -19,6 +19,7 @@ self.DIARY_FILES = [
   "./diary/locales/discussion.js",
   "./diary/locales/editor.js",
   "./diary/locales/friends-hub.js",
+  "./diary/locales/memories.js",
   "./diary/locales/player.js",
   "./diary/locales/sharing.js",
   "./diary/locales/shell.js",
@@ -37,6 +38,11 @@ self.DIARY_FILES = [
   "./diary/media/moon.jpg",
   "./diary/media/moon.mp3",
   "./diary/media/river.jpg",
+  "./diary/memories-data.js",
+  "./diary/memories-viewer.css",
+  "./diary/memories-viewer.js",
+  "./diary/memories.css",
+  "./diary/memories.js",
   "./diary/music-link.js",
   "./diary/player.js",
   "./diary/profile-name.js",

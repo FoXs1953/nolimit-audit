@@ -4,6 +4,7 @@ export const playerText=translator({
   zoom:['Рассмотреть открытку целиком','Ашықхатты толық көру','View the whole postcard'],
   loadingMusic:['Загружаем музыку…','Музыка жүктелуде…','Loading music…'],
   story:['Из дневника','Күнделіктен','From the journal'],
+  photoMusic:['Музыка фото','Фото әуені','Photo soundtrack'],
   close:['Закрыть','Жабу','Close'],
   providerBlocked:['Для звука нажми ▶ в плеере сервиса.','Дыбысты қосу үшін сервистің плееріндегі ▶ түймесін бас.','Press ▶ in the embedded player to start the music.'],
   providerRestricted:['Владелец ограничил воспроизведение здесь. Открой песню на сервисе.','Иесі мұнда ойнатуды шектеген. Әнді сервистен аш.','This track is restricted here. Open the song on the service.'],

@@ -163,32 +163,36 @@ async function read(actor, route) {
   return response.json();
 }
 
-async function checkInviteLifecycle(owner, first, second) {
+async function checkInviteLifecycle(db, owner, first, second) {
   const issue = () => api(owner, '/invites', { method: 'POST' }).then(r => r.json());
   const invitation = await issue();
   assert.deepEqual(await issue(), invitation);
   const route = '/invites/' + invitation.token;
-  const apply = who => api(who, route + '/request', { method: 'POST' }).then(r => r.json());
+  const accept = (who, path = route) => api(who, path + '/accept', { method: 'POST' });
   const preview = await fetch(owner.origin + apiRoot + route);
+  assert.equal(preview.status, 200);
   assert.equal((await preview.json()).person.id, owner.id);
+  assert.equal((await (await accept(owner)).json()).status, 'self');
+  assert.equal((await read(owner, '/people')).invite.token, invitation.token);
+  assert.deepEqual((await read(owner, '/people')).friends, []);
   const candidates = [first, second];
-  const requests = await Promise.all(candidates.map(apply));
-  assert.deepEqual(requests.map(r => r.status), ['pending', 'pending']);
-  assert.equal((await apply(first)).requestId, requests[0].requestId);
-  const accept = request => api(owner, '/requests/' + request.requestId + '/accept', { method: 'POST' });
-  const statuses = (await Promise.all(requests.map(accept))).map(r => r.status());
-  assert.deepEqual([...statuses].sort(), [200, 404]);
+  const statuses = (await Promise.all(candidates.map(who => accept(who)))).map(r => r.status());
+  assert.deepEqual([...statuses].sort(), [200, 410]);
   const winner = statuses.indexOf(200);
-  assert.equal((await accept(requests[winner])).status(), 200);
+  assert.equal((await (await accept(candidates[winner])).json()).status, 'friends');
   assert.equal((await read(candidates[winner], route)).status, 'friends');
-  assert.equal((await read(candidates[1 - winner], '/people')).outgoing.length, 0);
+  assert.deepEqual((await read(owner, '/people')).friends.map(p => p.id), [candidates[winner].id]);
+  assert.deepEqual((await read(owner, '/people')).incoming, []);
   assert.equal((await api(owner, '/friends/' + candidates[winner].id, { method: 'DELETE' })).status(), 200);
   const next = await issue();
   assert.notEqual(next.token, invitation.token);
   assert.equal((await api(owner, '/invites/current?token=' + invitation.token, { method: 'DELETE' })).status(), 409);
   assert.equal((await read(owner, '/people')).invite.token, next.token);
   assert.equal((await api(owner, '/invites/current?token=' + next.token, { method: 'DELETE' })).status(), 200);
-  assert.equal((await api(first, '/invites/' + next.token)).status(), 410);
+  assert.equal((await accept(first, '/invites/' + next.token)).status(), 410);
+  const expired = await issue();
+  await db.prepare('UPDATE friend_invites SET expires_at = unixepoch() WHERE token = ?').bind(expired.token).run();
+  assert.equal((await accept(first, '/invites/' + expired.token)).status(), 410);
 }
 
 async function auditControls(page, scope, label) {
@@ -230,7 +234,7 @@ async function clickWrite(actor, button, method, route) {
   assert.equal(reply.status(), 200, method + ' ' + route + ': ' + await reply.text());
 }
 
-async function requestControls(author, visitor) {
+async function requestControls(db, author, visitor) {
   await go(author, 'friends/people');
   await author.page.locator('[data-act=profile]').click();
   await author.page.locator('[data-act=edit-name]').click();
@@ -248,16 +252,12 @@ async function requestControls(author, visitor) {
   const link = author.page.locator('.fh-link-field input');
   const invitation = await link.inputValue();
   const token = new URL(invitation).hash.split('/').pop();
-  async function request() {
-    await go(visitor, 'friends/invite/' + token);
-    const send = visitor.page.locator('[data-act=send-request]');
-    await send.waitFor();
-    await auditControls(visitor.page, visitor.page.locator('.fh'), 'Invitation');
-    await send.click();
-    const cancel = visitor.page.locator('[data-act=cancel-request]');
-    await cancel.waitFor();
-    return cancel.getAttribute('data-id');
-  }
+  const request = async () => {
+    const id = randomUUID();
+    await db.prepare('INSERT INTO friend_requests (id, token, owner_id, requester_id) VALUES (?, ?, ?, ?)')
+      .bind(id, token, author.id, visitor.id).run();
+    return id;
+  };
   const canceled = await request();
   await go(visitor, 'friends/people');
   await clickWrite(visitor, visitor.page.locator('[data-act=cancel-request]'), 'DELETE', '/requests/' + canceled);
@@ -280,6 +280,15 @@ async function requestControls(author, visitor) {
   await author.page.locator('[data-act=create-invite]').waitFor();
   assert.deepEqual((await read(visitor, '/people')).outgoing, []);
   assert.equal((await api(visitor, '/invites/' + token)).status(), 410);
+
+  const reciprocal = await (await api(visitor, '/invites', { method: 'POST' })).json();
+  await db.prepare('INSERT INTO friend_requests (id, token, owner_id, requester_id) VALUES (?, ?, ?, ?)')
+    .bind(randomUUID(), reciprocal.token, visitor.id, author.id).run();
+  await connect(author, visitor);
+  assert.deepEqual((await read(visitor, '/people')).incoming, []);
+  assert.equal((await read(visitor, '/people')).invite.token, reciprocal.token);
+  await api(visitor, '/invites/current?token=' + reciprocal.token, { method: 'DELETE' });
+  assert.equal((await api(author, '/friends/' + visitor.id, { method: 'DELETE' })).status(), 200);
 }
 
 async function connect(owner, other) {
@@ -291,12 +300,15 @@ async function connect(owner, other) {
   const url = await field.inputValue();
   await other.page.bringToFront();
   await other.page.goto(url);
-  await other.page.locator('[data-act=send-request]').click();
-  await other.page.locator('[data-act=cancel-request]').waitFor();
+  const accept = other.page.locator('[data-act=accept-invite]');
+  await accept.waitFor();
+  assert.equal(await other.page.locator('.fh-invitation button').count(), 1);
+  assert.ok(!(await read(owner, '/people')).friends.some(p => p.id === other.id));
+  await clickWrite(other, accept, 'POST', '/invites/' + new URL(url).hash.split('/').pop() + '/accept');
+  await other.page.waitForURL('**/#friends/people');
+  await other.page.locator('.fh-person-link').filter({ hasText: owner.name }).waitFor();
   await go(owner, 'friends/people');
-  await owner.page.locator('.fh-request').filter({ hasText: other.name }).locator('[data-act=accept]').click();
   await owner.page.locator('.fh-person-link').filter({ hasText: other.name }).waitFor();
-  assert.ok((await read(other, '/people')).friends.some(p => p.id === owner.id));
 }
 
 async function saveAccess(author, mode, selected, first) {
@@ -427,7 +439,7 @@ async function toggleWarmth(actor, publication, expected) {
   assert.deepEqual(own.map(r => r.kind), expected ? ['warm'] : []);
 }
 
-async function journey(browser, site) {
+async function journey(browser, site, db) {
   const errors = [];
   const signedOut = await fetch(site.origin + apiRoot + '/session');
   assert.deepEqual(await signedOut.json(), { authenticated: false, user: null });
@@ -436,16 +448,17 @@ async function journey(browser, site) {
   const ilya = await person(browser, site, 'Илья', 'en', 320, errors);
   const welcome = await (await api(author,'/invites',{method:'POST'})).json();
   const lena = await person(browser, site, 'Лена', 'kk', 390, errors, 'friends/invite/'+welcome.token);
-  const send = lena.page.locator('[data-act=send-request]');
-  await send.waitFor();
-  assert.deepEqual((await read(author,'/people')).incoming, []);
-  await send.click();
-  await lena.page.locator('[data-act=cancel-request]').waitFor();
-  assert.equal((await read(author,'/people')).incoming[0].person.id, lena.id);
-  assert.equal((await api(author,'/invites/current?token='+welcome.token,{method:'DELETE'})).status(), 200);
+  const accept = lena.page.getByRole('button', { name: 'Қабылдау', exact: true });
+  await accept.waitFor();
+  await auditControls(lena.page, lena.page.locator('.fh'), 'Invitation');
+  assert.deepEqual((await read(author, '/people')).friends, []);
+  await clickWrite(lena, accept, 'POST', '/invites/' + welcome.token + '/accept');
+  await lena.page.waitForURL('**/#friends/people');
+  assert.deepEqual((await read(author, '/people')).friends.map(p => p.id), [lena.id]);
+  assert.equal((await api(author, '/friends/' + lena.id, { method: 'DELETE' })).status(), 200);
   await keyboardNavigation(author);
-  await checkInviteLifecycle(author, ilya, lena);
-  await requestControls(author, lena);
+  await checkInviteLifecycle(db, author, ilya, lena);
+  await requestControls(db, author, lena);
   await connect(author, ilya);
   await connect(author, lena);
   await auditControls(author.page, author.page.locator('.fh'), 'People');
@@ -586,7 +599,7 @@ async function journey(browser, site) {
     assert.ok(['chromium', 'webkit'].includes(engine));
     browser = await (engine === 'webkit' ? webkit : chromium).launch(launch);
     await checkLegacyProfile(mf, browser, site);
-    await journey(browser, site);
+    await journey(browser, site, await mf.getD1Database('DB'));
   } finally {
     await browser?.close();
     await site?.close();

@@ -193,22 +193,17 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     let title = t('inviteFrom',{name:inviter.name}), hint = '', actions = '';
     if (!signed()) actions = profileNameForm('fh-name',nameDraft);
     else switch (invite.status) {
-      case 'pending':
-        title = t('pending'); hint=t('pendingHint');
-        if (invite.requestId) actions=button('cancel-request',t('cancelRequest'),{id:invite.requestId});
-        break;
       case 'friends':
         title=t('already'); actions=goButton(personRoute(inviter),'openFriend'); break;
       case 'self':
         title=t('own'); hint=t('ownHint'); actions=goButton('friends/people','openPeople'); break;
+      case 'pending':
       case 'incoming':
-        title=t('incomingTitle',{name:inviter.name});
-        actions=button('accept',t('accept'),{id:invite.requestId,style:'primary'}); break;
       case 'available':
-        actions=button('send-request',t('request'),{style:'primary'}); break;
+        hint=t('acceptInviteHint');
+        actions=button('accept-invite',t('accept'),{style:'primary'}); break;
       default: return stateBox(t('unavailable'),t('newInvite'),'','clock');
     }
-    if (!hint && (!signed() || invite.status==='available')) hint=t('requestHint');
     return '<section class="fh-state fh-invitation panel">'+avatar(inviter,true)+'<div><h2>'+esc(title)+'</h2><p class="fh-inviter-code">'+
       esc([inviter.name,inviter.code].join(' · '))+'</p>'+(hint?'<p>'+esc(hint)+'</p>':'')+'</div>'+actions+'</section>';
   }
@@ -420,10 +415,10 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
         catch { if (alive) { field.focus(); field.select(); ctx.toast(t('copyManual')); } }
         return;
       }
-      case 'accept': return mutate(requestPath+'/accept','POST','accepted',{to:page==='invite'?'friends/people':null});
+      case 'accept': return mutate(requestPath+'/accept','POST','accepted');
       case 'decline': return mutate(requestPath,'DELETE','declined');
       case 'cancel-request': return mutate(requestPath,'DELETE','cancelled');
-      case 'send-request': return mutate('/invites/'+enc(routeId)+'/request','POST','pending');
+      case 'accept-invite': return mutate('/invites/'+enc(routeId)+'/accept','POST','accepted',{to:'friends/people'});
       case 'friend-menu':
       case 'remove':
       case 'comment':
@@ -451,7 +446,7 @@ export function mountFriendsHub(root, route, ctx, viewState = {}) {
     event.preventDefault();
     const name=readProfileName(event.target);
     if (!name) return;
-    mutate('/profile','POST','savedName',{body:{name},nextPane:pane==='name'?'profile':'',focus:pane==='name'?'pane-title':page==='invite'?'send-request:':'add:'});
+    mutate('/profile','POST','savedName',{body:{name},nextPane:pane==='name'?'profile':'',focus:pane==='name'?'pane-title':page==='invite'?'accept-invite:':'add:'});
   }
 
   function keydown(event) {

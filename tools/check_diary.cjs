@@ -9,19 +9,24 @@ const engine = process.env.ENGINE || 'chromium';
 const firstDay = 'Тёплый дождь у тихого озера';
 const revised = 'Вечер под тёплым дождём';
 const note = 'В камышах звенели капли.';
+const frameCaption = 'Свет пробивался сквозь листья.';
+const frameSong = 'Шорох листвы';
+const daySong = 'Звон воды';
+const firstLine = firstDay+'.';
+const lastLine = 'Мы дошли до воды, когда тучи рассеялись.';
 const media = path.join(__dirname,'../dist/diary/media');
 const by = (page,name,exact=true) => page.getByRole('button',{name,exact});
 const main = page => page.getByRole('main');
 
-function makeTone() {
-  const rate=12000, samples=rate*5, size=samples*2;
+function makeTone(name=daySong, seconds=5, frequency=220) {
+  const rate=12000, samples=rate*seconds, size=samples*2;
   const wav=Buffer.alloc(44+size);
   wav.write('RIFF',0);wav.writeUInt32LE(36+size,4);wav.write('WAVEfmt ',8);
   wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
   wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);
   wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(size,40);
-  for(let n=0;n<samples;n++) wav.writeInt16LE(Math.round(3600*Math.sin(n*2*Math.PI*220/rate)),44+n*2);
-  return {name:'Звон воды.wav',mimeType:'audio/wav',buffer:wav};
+  for(let n=0;n<samples;n++) wav.writeInt16LE(Math.round(3600*Math.sin(n*2*Math.PI*frequency/rate)),44+n*2);
+  return {name:name+'.wav',mimeType:'audio/wav',buffer:wav};
 }
 async function chooseFile(page,label,files) {
   const selection=page.waitForEvent('filechooser');
@@ -76,6 +81,23 @@ async function journey(browser,dir,errors) {
   const ctx=await browser.newContext({viewport:{width:390,height:844},acceptDownloads:true});
   try {
     const page=await ctx.newPage();logErrors(page,errors);
+    await page.addInitScript(()=>{
+      const NativeAudio=window.Audio;
+      window.diaryTestAudio=[];
+      window.Audio=class extends NativeAudio {
+        constructor(...args){super(...args);window.diaryTestAudio.push(this);}
+      };
+    });
+    const waitForTrack=(duration,time=.03)=>page.waitForFunction(({duration,time})=>{
+      const active=window.diaryTestAudio.filter(audio=>!audio.paused && audio.currentTime>time);
+      return active.length===1 && Math.abs(active[0].duration-duration)<.1;
+    },{duration,time},{timeout:10000});
+    const pickSecond=()=>page.locator('[data-ed-select="1"]').click();
+    const photoStory=page.locator('.ed-photo-story');
+    const photoCaption=photoStory.locator('[data-ed-photo-caption]');
+    async function openPhotoStory() {
+      if(!await photoCaption.isVisible()) await photoStory.locator('summary').click();
+    }
     await ready(page);await layout(page);
     await by(main(page),/^Добавить заметку/,false).click();
     await page.getByRole('textbox',{name:'Что запомнилось?'}).fill(note);
@@ -85,11 +107,11 @@ async function journey(browser,dir,errors) {
     const story=page.getByRole('textbox',{name:'Текст дня'});
     await story.waitFor();
     assert.equal(await story.inputValue(),note);
-    await story.fill(firstDay+'. '+note+' Мы дошли до воды, когда тучи рассеялись.');
+    await story.fill([firstLine,note,lastLine].join(' '));
     await by(main(page),'Сохранить открытку').click();
     await page.getByText('Добавьте хотя бы одно фото или видео.',{exact:true}).waitFor();
-    await chooseFile(page,'Добавить фото и видео',[path.join(media,'river.jpg'),path.join(media,'leaves.jpg')]);
-    await by(main(page),'На обложку').waitFor();
+    await chooseFile(page,'Добавить фото и видео',[path.join(media,'river.jpg'),path.join(media,'leaves.jpg'),path.join(media,'maple.jpg')]);
+    await page.locator('[data-ed-select="2"]').waitFor();
     await by(main(page),'Сохранить открытку').click();
     await page.getByText('Выберите аудиофайл или добавьте ссылку на песню.',{exact:true}).waitFor();
     await by(main(page),'Ссылка').click();
@@ -97,20 +119,47 @@ async function journey(browser,dir,errors) {
     await by(main(page),'Сохранить открытку').click();
     await page.getByText('Добавьте ссылку на песню или видео.',{exact:true}).waitFor();
     await by(main(page),'Аудиофайл').click();
-    await chooseFile(page,'Выбрать аудиофайл',makeTone());
+    await chooseFile(page,'Выбрать аудиофайл',makeTone(daySong,16));
     await by(main(page),'Заменить аудиофайл').waitFor();
+    await pickSecond();await openPhotoStory();
+    await photoCaption.fill(frameCaption);
+    await photoStory.locator('[data-ed-photo-music]').setInputFiles(makeTone(frameSong,7,330));
+    await photoStory.getByText(frameSong,{exact:true}).waitFor();
     await page.getByText('Сохранено на устройстве',{exact:true}).waitFor();
     await page.reload();await story.waitFor();
     assert.ok((await story.inputValue()).includes(note));
     await by(main(page),'Заменить аудиофайл').waitFor();
+    await pickSecond();await openPhotoStory();
+    assert.equal(await photoCaption.inputValue(),frameCaption);
+    await photoStory.getByText(frameSong,{exact:true}).waitFor();
     assert.equal(await page.locator('[data-ed-why],[data-ed-preview]').count(),0);
     assert.equal(await by(main(page),'Сохранить открытку').count(),1);
     await layout(page);await saveCard(page);
     await page.getByRole('heading',{name:firstDay,exact:true}).waitFor();
-    await by(main(page),'Оживить открытку').click();await by(page.getByRole('dialog'),'Выключить звук').click();
-    await by(page.getByRole('dialog'),'Включить звук').click();
-    await by(page.getByRole('dialog'),'Следующее фото').click();await page.getByRole('dialog').getByText('2 из 2',{exact:true}).waitFor();
-    await by(page.getByRole('dialog'),'Предыдущее фото').click();
+    await by(main(page),'Оживить открытку').click();
+    const viewer=page.getByRole('dialog');
+    const trackName=viewer.locator('[data-card="track-name"]');
+    const runningText=viewer.locator('[data-card="story-scroll"]');
+    const frameSeconds=await page.locator('.diary-card').evaluate(card=>parseFloat(card.style.getPropertyValue('--day-duration'))/1000);
+    const sceneTimeout=frameSeconds*1000+5000;
+    await trackName.filter({hasText:daySong}).waitFor();
+    assert.match(await runningText.textContent(),/Тёплый дождь/,'The day story starts with the first frame');
+    await waitForTrack(16);
+    await viewer.getByText('2 из 3',{exact:true}).waitFor({timeout:sceneTimeout});
+    await trackName.filter({hasText:frameSong}).waitFor();
+    assert.equal((await runningText.textContent()).trim(),frameCaption);
+    await waitForTrack(7);
+    await viewer.getByText('3 из 3',{exact:true}).waitFor({timeout:sceneTimeout});
+    await trackName.filter({hasText:daySong}).waitFor();
+    assert.match(await runningText.textContent(),/тучи рассеялись/,'The day story continues after a custom caption');
+    await waitForTrack(16,frameSeconds*.75);
+    await viewer.locator('[data-card="play"][aria-pressed="true"]').click();
+    assert.ok(await page.evaluate(()=>window.diaryTestAudio.every(audio=>audio.paused)),'Pausing the postcard stops the active track');
+    await by(viewer,'Выключить звук').click();
+    await by(viewer,'Включить звук').click();
+    await by(viewer,'Предыдущее фото').click();
+    await viewer.getByText('2 из 3',{exact:true}).waitFor();
+    assert.equal((await runningText.textContent()).trim(),frameCaption);
     assert.ok(await page.locator('[data-card="viewer-photo"]').isVisible());
     await page.goBack();await page.getByRole('dialog').waitFor({state:'hidden'});
     await by(main(page),/^Прочитать запись/,false).click();
@@ -168,7 +217,7 @@ async function journey(browser,dir,errors) {
     await gotoPage(page,'archive');
     await by(main(page),new RegExp(revised),false).waitFor();
     assert.equal(await page.locator('[data-route="examples"],[data-example]').count(),0);
-    console.log(engine+' 390px: moment, reload, own text + photos + WAV, playback, search, edit, delete + restore and ZIP OK');
+    console.log(engine+' 390px: moments, autosave, photo captions, soundtrack switching, search, editing, deletion and ZIP OK');
     return zip;
   } finally {await ctx.close();}
 }
@@ -182,7 +231,11 @@ async function importOnCleanDevice(browser,zip,errors) {
     await by(main(page),new RegExp(revised),false).click();
     await page.getByRole('heading',{name:revised,exact:true}).waitFor();await layout(page);
     await by(main(page),'Оживить открытку').click();await by(page.getByRole('dialog'),'Выключить звук').click();
-    await by(page.getByRole('dialog'),'Следующее фото').click();await page.getByRole('dialog').getByText('2 из 2',{exact:true}).waitFor();
+    const viewer=page.getByRole('dialog');
+    await by(viewer,'Следующее фото').click();
+    await viewer.getByText('2 из 3',{exact:true}).waitFor();
+    assert.equal((await viewer.locator('[data-card="story-scroll"]').textContent()).trim(),frameCaption);
+    await viewer.locator('[data-card="track-name"]').filter({hasText:frameSong}).waitFor();
     await page.reload();await page.getByRole('heading',{name:revised,exact:true}).waitFor();
     console.log(engine+' 820px: ZIP imported through UI, saved photos and sound available after reload');
   } finally { await ctx.close(); }
@@ -246,7 +299,10 @@ async function personalPreviews(browser,errors) {
     await dateField.fill(pastDate);
     await story.fill(firstDay+'.');
     await chooseFile(page,'Добавить фото и видео',path.join(media,'river.jpg'));
-    await chooseFile(page,'Выбрать аудиофайл',makeTone());
+    const photoStory=page.locator('.ed-photo-story');
+    await photoStory.locator('summary').tap();
+    await photoStory.locator('[data-ed-photo-music]').setInputFiles(makeTone(frameSong));
+    await photoStory.getByText(frameSong,{exact:true}).waitFor();
     await saveCard(page);
     const savedRoute=new URL(page.url()).hash;
     await gotoPage(page,'today');

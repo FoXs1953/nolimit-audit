@@ -58,14 +58,14 @@
   .ed-photo-controls button:disabled,.ed-gallery-panel [data-ed-add-photo]:disabled{color:#8c94a1;background:#22252a;border-color:#464b53}
 }
 .ed-text-button,.ed-moments button{min-height:44px;padding:6px 0;color:var(--blue);font-size:.9rem;font-weight:600;text-align:left}
-.ed-crop,.ed-custom{border-top:1px solid var(--ed-edge)}
-.ed-crop{margin-bottom:8px}
+.ed-crop,.ed-custom,.ed-photo-story{border-top:1px solid var(--ed-edge)}
+.ed-crop,.ed-photo-story{margin-bottom:8px}
 .ed-crop-body{display:grid;grid-template-columns:minmax(72px,1fr) minmax(120px,2fr);align-items:center;gap:18px}
 .ed-crop-frame img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px}
-.ed-crop[open],.ed-custom[open]{padding-bottom:12px}
+.ed-crop[open],.ed-custom[open],.ed-photo-story[open]{padding-bottom:12px}
 .ed-layout summary{min-height:44px;display:list-item;align-content:center;cursor:pointer;padding:12px 0;line-height:1.3;font-weight:600;font-size:.92rem;color:#33435a;list-style-position:inside}
 .ed-layout summary:focus-visible{outline:2px solid #5085ff;outline-offset:2px}
-.ed-custom .ed-field,.ed-crop .ed-field{margin-top:5px;margin-bottom:10px}
+.ed-custom .ed-field,.ed-crop .ed-field,.ed-photo-story .ed-field{margin-top:5px;margin-bottom:10px}
 .ed-switch{display:flex;background:#edf0f5;border-radius:14px;padding:3px;margin-bottom:17px}
 .ed-switch button{flex:1;min-width:0;min-height:42px;border-radius:11px;font-size:.94rem;font-weight:570;color:#586577}
 .ed-switch button[aria-pressed="true"]{background:#fff;box-shadow:0 1px 4px #18355824;color:var(--ink)}

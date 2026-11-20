@@ -39,22 +39,34 @@ export function cleanDay(input) {
     assets.push({id:item.assetId,kind});
     return item.assetId;
   }
-  const photos=input.photos.map(photo=>({
-    ...(photo?.kind==='video'?{kind:'video'}:{}),
-    assetId:assetId(photo,photo?.kind==='video'?'video':'photo'),x:numeric(photo.x,0,100,50),y:numeric(photo.y,0,100,50),color:color(photo.color)
-  }));
+  function fileTrack(track) {
+    // File names are local. Published files use a localized generic label.
+    const file={kind:'file',assetId:assetId(track,'audio'),energy:energy(track.energy)};
+    if (Number.isFinite(track.bpm)) file.bpm=numeric(track.bpm,35,245,91);
+    return file;
+  }
+  const photos=input.photos.map(photo=>{
+    const video=photo?.kind==='video';
+    const frame={...(video?{kind:'video'}:{}),assetId:assetId(photo,video?'video':'photo'),x:numeric(photo.x,0,100,50),y:numeric(photo.y,0,100,50),color:color(photo.color)};
+    if (!video && photo.caption != null) {
+      const label=string(photo.caption,220).trim();
+      if (label) frame.caption=label;
+    }
+    if (photo.music != null) {
+      if (video || photo.music.kind!=='file') fail(400,'invalid_day');
+      frame.music=fileTrack(photo.music);
+    }
+    return frame;
+  });
   const track=input.music;
-  let music;
+  let music=null;
   if (track?.kind==='file') {
-    // The editor derives a file track's name from the local filename. Use the
-    // player's localized generic label for published files.
-    music={kind:'file',assetId:assetId(track,'audio'),energy:energy(track.energy)};
-    if (Number.isFinite(track.bpm)) music.bpm=numeric(track.bpm,35,245,91);
+    music=fileTrack(track);
   } else if (track?.kind==='link') {
     const link=musicLink(track.url);
     if (!link) fail(400,'invalid_music_link');
     music={kind:'link',url:link.url,name:string(track.name ?? '',1000),energy:energy(track.energy)};
-  } else fail(400,'invalid_day');
+  } else if (track != null || !photos.some(photo=>photo.music)) fail(400,'invalid_day');
   const r=input.recipe || {};
   const recipe={version:1,title,caption,color:color(r.color || photos[0].color)};
   if (['calm','bright','sad','angry','restless'].includes(r.mood)) recipe.mood=r.mood;
@@ -79,7 +91,10 @@ export function audience(input) {
 
 export function asPublication(row) {
   const day=JSON.parse(row.day_json);
-  for (const photo of day.photos) photo.src=mediaURL(row.id,photo.assetId);
+  for (const photo of day.photos) {
+    photo.src=mediaURL(row.id,photo.assetId);
+    if (photo.music?.kind==='file') photo.music.src=mediaURL(row.id,photo.music.assetId);
+  }
   if (day.music?.kind==='file') day.music.src=mediaURL(row.id,day.music.assetId);
   return {id:row.id,owner:person(row),day,mode:row.mode,accessVersion:row.access_version,contentVersion:row.content_version};
 }

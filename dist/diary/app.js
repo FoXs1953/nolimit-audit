@@ -4,6 +4,7 @@ import {mountEditor} from './editor.js';
 import {mountPlayer} from './player.js';
 import {mountHome} from './home.js';
 import {mountLibrary} from './library.js';
+import {mountMemories} from './memories.js';
 import {downloadDays,mountSettings} from './settings.js';
 
 import {mountFriendsHub} from './friends-hub.js';
@@ -17,6 +18,7 @@ import {t} from './locales/shell.js';
 const screens = {
   today:['today','todayShort','book','todayIntro'],
   archive:['archive','archiveShort','calendar','archiveIntro'],
+  memories:['memories','memories','layers','memoriesIntro'],
   friends:['friends','friends','people','friendsSubtitle'],
   settings:['settings','settings','settings','settingsIntro']
 };
@@ -194,7 +196,7 @@ async function go(target,options={}){
     if(find('sheet').open)closeSheet();
     return;
   }
-  const method=history.state?.panel || history.state?.cardViewer || key===route?'replaceState':'pushState';
+  const method=history.state?.panel || history.state?.cardViewer || history.state?.memoryViewer || key===route?'replaceState':'pushState';
   const state=key.startsWith('shared/') && route.startsWith('friends') ? {friendOrigin:route} : {};
   hidePanel(true);history[method](state,'','#'+key);
   await render(key,options.focus!==false);
@@ -240,6 +242,7 @@ async function render(key,focus,viewState) {
       if(ticket!==generation)return;
       if(section==='today')cleanup=mountHome(root,days,ctx);
       if(section==='archive')cleanup=mountLibrary(root,days,ctx);
+      if(section==='memories')cleanup=mountMemories(root,days,ctx,viewState);
       if(section==='settings')cleanup=mountSettings(root,days,ctx);
     }
   }catch(error){
