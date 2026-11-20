@@ -174,8 +174,10 @@ async function main() {
     assert.equal(await view('progress').textContent(),'1 из 3');
     assert.equal(await view('audio').evaluate(audio=>audio.controls && audio.paused),true);
     await view('slideshow').click();
+    assert.equal(await view('audio').evaluate(audio=>audio.loop),true);
     await view('progress').filter({hasText:'2 из 3'}).waitFor({timeout:15000});
     await view('slideshow').click();
+    assert.equal(await view('audio').evaluate(audio=>audio.paused && !audio.loop),true);
     await view('day').getByText('Записка о прогулке',{exact:true}).waitFor();
     await view('next').click();
     assert.equal(await view('next').isDisabled(),true);

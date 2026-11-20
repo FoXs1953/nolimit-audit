@@ -75,9 +75,13 @@ export function openMemoryViewer(dialog,{entries,periodLabel,track,index=0},{clo
     const label = slideshow ? 'stopShow' : position === end ? 'replay' : 'startShow';
     el('slideshow').innerHTML = icon(slideshow ? 'pause' : 'play',16)+esc(t(label));
   }
-  function stopSlideshow() {
+  function stopSlideshow(pauseMusic = true) {
     clearTimeout(slideTimer);
-    if (slideshow) audio?.pause();
+    if (audio) audio.loop = false;
+    if (slideshow && pauseMusic) {
+      audio?.pause();
+      if (providerReady) provider.pause();
+    }
     slideshow = false;
     refreshTransport();
   }
@@ -140,7 +144,7 @@ export function openMemoryViewer(dialog,{entries,periodLabel,track,index=0},{clo
   function advance(direction) {
     const next = position+direction;
     if (next < 0 || next > end) return;
-    stopSlideshow();
+    stopSlideshow(false);
     position = next;
     renderDay();
   }
@@ -155,8 +159,14 @@ export function openMemoryViewer(dialog,{entries,periodLabel,track,index=0},{clo
   function toggleSlideshow() {
     if (slideshow) { stopSlideshow(); return; }
     pauseClip();
-    if (position === end) { position = 0; renderDay(); }
+    if (position === end) {
+      position = 0;
+      if (audio?.readyState) audio.currentTime = 0;
+      if (providerReady) provider.seek(link.start || 0);
+      renderDay();
+    }
     slideshow = true;
+    if (audio) audio.loop = true;
     audio?.play().catch(error=>{
       if (slideshow && error.name!=='AbortError') musicStatus.textContent = t('audioError');
     });

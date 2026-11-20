@@ -32,8 +32,6 @@ export const memoryText = translator({
   fileBusy:['Проверяем аудиофайл…','Аудиофайл тексерілуде…','Checking the audio file…'],
   storageError:['Не удалось запомнить выбор в этом браузере.','Таңдауды осы браузерде сақтау мүмкін болмады.','Your selection couldn’t be saved in this browser.'],
   original:['Открыть день','Күнді ашу','Open entry'],
-  note:['Заметки дня','Күн жазбалары','Day notes'],
-  entry:['Запись дня','Күн жазбасы','Journal entry'],
   startShow:['Запустить показ','Көрсетуді бастау','Start slideshow'],
   stopShow:['Приостановить показ','Көрсетуді кідірту','Pause slideshow'],
   replay:['Смотреть сначала','Басынан көру','Watch from the start'],
