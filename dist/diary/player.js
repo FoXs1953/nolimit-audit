@@ -18,10 +18,23 @@ function webAddress(value) {
   } catch { return ''; }
 }
 
+function storyByPhoto(photos,story) {
+  const words=story.match(/\S+\s*/gu) || [];
+  const count=photos.filter(photo=>!photo.caption?.trim()).length;
+  let slot=0;
+  return photos.map(photo=>{
+    if(photo.caption?.trim())return photo.caption.trim();
+    const start=Math.floor(slot++*words.length/count);
+    const end=Math.floor(slot*words.length/count);
+    return words.slice(start,Math.max(start+1,end)).join('').trim();
+  });
+}
+
 export function mountPlayer(root,day,ctx,viewState={}) {
   const {esc,icon}=ctx, recipe=presentRecipe(day), photos=day.photos || [], music=day.music || {};
   const lang=storyLanguage(day), date=formatDate(day.date);
   const hasVideos=photos.some(isGalleryVideo);
+  const timedTracks=photos.some(photo=>photo.music?.kind==='file');
   const readOnly=ctx.readOnly===true;
   const own=new AbortController(), opts={signal:own.signal}, urls=new Map();
   const audioLink=music.kind==='link' ? musicLink(music.url) : null;
@@ -37,24 +50,31 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     }
     return (localMedia.test(media.src || '') || (readOnly && networkMedia.test(media.src || ''))) ? media.src : '';
   }
-  const audioSrc=music.kind==='file' ? urlFor(music) : '';
-  const audio=audioSrc ? new Audio() : null;
-  const bundled=localMedia.test(audioSrc);
+  let dayAudioSrc=music.kind==='file' ? urlFor(music) : '';
+  const audio=dayAudioSrc || timedTracks ? new Audio() : null;
+  const bundled=localMedia.test(dayAudioSrc);
   let muted=Boolean(viewState?.muted), destroyed=false, playing=false, wanted=false, finished=false;
   let position=clamp(Number.isInteger(viewState?.position)?viewState.position:0,0,Math.max(0,photos.length-1));
   const startAt=audioLink?.start || 0;
   let resumeTime=Number.isFinite(viewState?.time) ? viewState.time : startAt;
-  let pendingSeek=audio && resumeTime>0 ? resumeTime : null;
+  let dayAudioTime=Number.isFinite(viewState?.dayAudioTime) ? viewState.dayAudioTime : startAt;
+  let pendingSeek=audio && (timedTracks ? dayAudioTime>0 : resumeTime>0) ? (timedTracks ? dayAudioTime : resumeTime) : null;
   let providerPlaying=false;
-  let provider=null, duration=0, timer=0, playRequest=0, fallbackClock=0, fallbackOffset=0;
+  let provider=null, duration=0, timer=0, playRequest=0, fallbackClock=0;
+  let fallbackOffset=timedTracks && Number.isFinite(viewState?.time) ? viewState.time : 0;
+  let audioActivated=false;
   let trigger=null, scrollStyle='', utterance=null, closingHistory=false, expanded=false;
   const speech=env.speechSynthesis;
+  const reducedMotion=env.matchMedia('(prefers-reduced-motion: reduce)');
   speech?.getVoices();
   const dayNotes=visibleDayNotes(day);
   const notesSection=noteList(dayNotes);
   const editableNotes=readOnly ? notesSection : noteList(dayNotes,{dayId:day.id});
   const sourceName=music.name || t('dayMusic');
   const story=String(day.text || recipe.caption || '').trim();
+  const textByPhoto=storyByPhoto(photos,story);
+  const photoTrack=()=>photos[position]?.music;
+  const sceneAudioSrc=()=>photoTrack() ? urlFor(photoTrack()) : dayAudioSrc;
   // The first sentence often supplied the title. Offer the next detail on the page;
   // the reading view always keeps the complete entry.
   const firstSentence=story.match(/^(.+?)[.!?…]+(?:\s+|$)/u);
@@ -82,14 +102,14 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     (hasVideos?'<video data-card="viewer-video" controls playsinline preload="none" hidden></video>':'')+'</div></div>'+
     '<div class="viewer-details">'+
     (film?'<div class="viewer-provider" data-card="provider"></div>':'')+
-    '<div class="viewer-music"><span class="viewer-music-glyph">'+icon(film?'play':'music',20)+'</span><div>'+ (film?'':'<small>'+html('dayMusic')+'</small>')+'<strong>'+esc(sourceName)+'</strong></div></div>'+
+    '<div class="viewer-music" data-card="music"><span class="viewer-music-glyph">'+icon(film?'play':'music',20)+'</span><div><small data-card="track-scope"></small><strong data-card="track-name"></strong></div></div>'+
     (film?'':'<div class="viewer-provider" data-card="provider"'+(embedded?'':' hidden')+'></div>')+
     '<p class="viewer-status" role="status" data-card="status"></p>'+
     (song?'<a class="viewer-source" data-card="source" href="'+esc(song)+'" target="_blank" rel="noopener noreferrer">'+html(film?'openVideo':'openSong')+' ↗</a>':'')+
     '</div><div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev',hasVideos?'previousFrame':'previous')+control('play','play','play','viewer-play')+control('next','next',hasVideos?'nextFrame':'next')+'</div>'+
     '<span class="viewer-count" data-card="counter"></span><button type="button" class="viewer-control viewer-mute" data-card="mute"></button></div>'+
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
-    '<p class="viewer-caption" lang="'+lang+'">'+esc(recipe.caption)+'</p>'+
+    '<div class="viewer-caption" data-card="story-window" tabindex="0" aria-label="'+html('story')+'"><p data-card="story-scroll" lang="'+lang+'"></p></div>'+
     '</div>'+notesSection+'</div></dialog>'+
     '<section class="ab-evidence"'+(readOnly && !film?' hidden':'')+'><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
@@ -112,10 +132,10 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   el('hero').dataset.mood=recipe.mood;
   frame.classList.toggle('is-still',Boolean(ctx.reducedMotion));
   for (const id of ['prev','next','scrub']) el(id).hidden=photos.length<2;
-  el('play').hidden=film;
+  el('play').hidden=film && !timedTracks;
   el('mute').hidden=!audio;
   el('counter').hidden=photos.length<2;
-  if(film && photos.length<2) viewer.querySelector('.viewer-controls').hidden=true;
+  if(film && !timedTracks && photos.length<2) viewer.querySelector('.viewer-controls').hidden=true;
   function notice(text='') {if(!destroyed)el('status').textContent=text;}
   function buttons() {
     if(destroyed)return;
@@ -159,12 +179,28 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     seek.value=position+1;seek.setAttribute('aria-valuetext',t('frameCount',{index:position+1,count:photos.length}));
     seek.style.setProperty('--ab-fill',100*position/Math.max(1,photos.length-1)+'%');
     el('prev').disabled=position===0;el('next').disabled=position>=photos.length-1;
+    const track=expanded ? photoTrack() : null;
+    el('track-name').textContent=track?.name || (day.music ? sourceName : '');
+    el('track-scope').textContent=track ? t('photoMusic') : film ? '' : t('dayMusic');
+    el('music').hidden=!track && !day.music;
+    el('provider').hidden=!embedded || Boolean(track);
+    if(song)el('source').hidden=Boolean(track);
+    if(timedTracks)el('mute').hidden=!sceneAudioSrc() && audioLink?.provider!=='youtube';
+    const storyText=textByPhoto[position] || (!photos.length ? story : '');
+    el('story-scroll').textContent=storyText;
+    const storyWindow=el('story-window');
+    storyWindow.hidden=!storyText;
+    storyWindow.scrollTop=0;
+    const photo=el('viewer-photo');
+    photo.style.setProperty('--viewer-frame-duration',frameSeconds()+'s');
+    for(const animation of photo.getAnimations())animation.currentTime=0;
   }
   function stopSpeech() {
     if(utterance){utterance=null;speech?.cancel();}
   }
   function frameSeconds() {
     const count=Math.max(1,photos.length), span=duration-startAt;
+    if(timedTracks)return recipe.interval/1000;
     if(span>0 && embedded) {
       const rounds=Math.max(1,Math.round(span/(count*6)));
       return span/(rounds*count);
@@ -174,36 +210,58 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   function mediaTime() {
     if(audio) return Number.isFinite(audio.currentTime)?audio.currentTime:0;
     if(provider) return provider.getCurrentTime() || 0;
+    return fallbackTime();
+  }
+  function fallbackTime() {
     return fallbackOffset+(playing?(performance.now()-fallbackClock)/1000:0);
   }
   function stopClock() {
     clearInterval(timer);timer=0;
-    if(playing && !provider && !audio) fallbackOffset=mediaTime();
+    if(playing && (timedTracks || (!provider && !audio))) fallbackOffset=fallbackTime();
     playing=false;
   }
   function finish() {
-    stopClock();wanted=false;finished=true;buttons();notice(t('finished'));
+    if(timedTracks)pauseSoundtrack();else stopClock();
+    wanted=false;finished=true;buttons();notice(t('finished'));
+  }
+  function scrollStory(progress) {
+    if(ctx.reducedMotion || reducedMotion.matches)return;
+    const scroller=el('story-window');
+    const distance=scroller.scrollHeight-scroller.clientHeight;
+    if(distance>0)scroller.scrollTop=distance*clamp((progress-.18)/.68,0,1);
   }
   function tick() {
     if(!playing || !photos.length)return;
+    const seconds=Math.max(.05,frameSeconds());
+    if(timedTracks){
+      const progress=fallbackTime()/seconds;
+      scrollStory(progress);
+      if(progress>=1){
+        if(position===photos.length-1)finish();else changeScene(position+1);
+      }
+      return;
+    }
     const at=Math.max(0,mediaTime()-startAt);
-    const idx=Math.floor(at/Math.max(.05,frameSeconds()));
+    const idx=Math.floor(at/seconds);
     if(!provider && !audio && idx>=photos.length){finish();return;}
     const target=embedded ? idx%photos.length : Math.min(idx,photos.length-1);
     if(target!==position){position=target;paint();}
+    scrollStory(embedded ? (at/seconds)%1 : at/seconds-position);
   }
   function begin() {
     if(destroyed || !expanded)return;
-    if(!playing){playing=true;fallbackClock=performance.now();timer=setInterval(tick,180);}
+    if(!playing){playing=true;fallbackClock=performance.now();timer=setInterval(tick,90);}
     wanted=true;finished=false;buttons();
   }
   function applySeek() {
-    if(pendingSeek===null || !audio || !Number.isFinite(audio.duration))return;
-    audio.currentTime=clamp(pendingSeek,0,Math.max(0,audio.duration-.05));
+    if(pendingSeek===null || !audio || !Number.isFinite(audio.duration) || audio.duration<=0)return;
+    const target=timedTracks ? pendingSeek%audio.duration : pendingSeek;
+    audio.currentTime=clamp(target,0,Math.max(0,audio.duration-.05));
     pendingSeek=null;
   }
   function locate(index) {
     if(!photos.length)return;
+    if(timedTracks){changeScene(clamp(index,0,photos.length-1),true);return;}
     position=clamp(index,0,photos.length-1);
     const seconds=frameSeconds();
     const round=embedded ? Math.floor(Math.max(0,mediaTime()-startAt)/(seconds*photos.length)) : 0;
@@ -233,18 +291,83 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   }
   function playAudio() {
     const id=++playRequest;
-    if(!audio.getAttribute('src'))audio.src=audioSrc;
-    audio.play().catch(()=>{
-      if(destroyed || id!==playRequest || !expanded)return;
-      stopClock();wanted=false;buttons();notice(t('audioUnavailable'));
+    const src=sceneAudioSrc();
+    if(audio.getAttribute('src')!==src)audio.src=src;
+    audioActivated=true;audio.muted=muted;
+    applySeek();
+    audio.play().then(()=>{
+      if(timedTracks && id===playRequest && expanded && wanted && !audio.paused){begin();notice();}
+    }).catch(()=>{
+      if(destroyed || id!==playRequest || !expanded || !wanted)return;
+      audioUnavailable();
     });
+  }
+  function audioUnavailable() {
+    if(timedTracks && wanted)begin();
+    else {stopClock();wanted=false;buttons();}
+    notice(t('audioUnavailable'));
+  }
+  function activateLaterTrack() {
+    if(audioActivated || sceneAudioSrc())return;
+    const track=photos.find(photo=>photo.music?.kind==='file').music;
+    const src=urlFor(track);
+    if(!src)return;
+    // WebKit ties audio permission to the element and the play gesture.
+    // Start it silently here if the current scene has a provider or no audio.
+    const id=++playRequest;
+    audio.src=src;audio.muted=true;audioActivated=true;
+    audio.play().catch(()=>{}).finally(()=>{
+      if(id!==playRequest || destroyed)return;
+      audio.pause();audio.muted=muted;
+    });
+  }
+  function startScene() {
+    const track=photoTrack(), src=sceneAudioSrc();
+    if(track && provider){providerPlaying=false;provider.pause({keepAvailable:true});}
+    if(src){
+      if(audio.getAttribute('src')!==src || pendingSeek!==null) {
+        pendingSeek=track ? fallbackOffset : dayAudioTime;
+      }
+      if(audio.readyState<2 || audio.getAttribute('src')!==src)notice(t('loadingMusic'));
+      playAudio();
+    }else{
+      pendingSeek=null;
+      begin();
+      if(!track && provider && !providerPlaying)provider.play();
+      else if(!track && song && !provider)notice(t('externalSong'));
+    }
+  }
+  function changeScene(index,manual=false) {
+    if(index===position && !finished)return;
+    const lastTrack=photoTrack();
+    const active=wanted;
+    if(!lastTrack){
+      if(dayAudioSrc && audio.getAttribute('src')===dayAudioSrc)dayAudioTime=pendingSeek ?? audio.currentTime;
+      else if(provider)dayAudioTime=Math.max(startAt,provider.getCurrentTime());
+    }
+    stopClock();fallbackOffset=0;
+    position=index;finished=false;notice();paint();
+    if(manual){
+      const previousDayFrames=photos.slice(0,index).filter(photo=>!photo.music).length;
+      dayAudioTime=startAt+previousDayFrames*frameSeconds();
+    }
+    const track=photoTrack();
+    if(manual || lastTrack || track){
+      playRequest++;audio.pause();
+      const src=sceneAudioSrc();
+      pendingSeek=src ? (track ? 0 : dayAudioTime) : null;
+      if(!track && manual)provider?.seek(dayAudioTime);
+      if(!src && audio.hasAttribute('src')){audio.removeAttribute('src');audio.load();}
+    }
+    if(active)startScene();else buttons();
   }
   function play() {
     if(!expanded)return;
     clip?.pause();
-    if(finished){position=0;fallbackOffset=0;pendingSeek=audio?0:null;resumeTime=startAt;paint();applySeek();provider?.seek(startAt);}
+    if(finished){position=0;fallbackOffset=0;dayAudioTime=startAt;pendingSeek=audio?0:null;resumeTime=startAt;paint();provider?.seek(startAt);}
     finished=false;wanted=true;stopSpeech();notice();
-    if(audio) {if(audio.readyState<2)notice(t('loadingMusic'));playAudio();}
+    if(timedTracks){activateLaterTrack();startScene();}
+    else if(audio) {applySeek();if(audio.readyState<2)notice(t('loadingMusic'));playAudio();}
     else if(providerPlaying) begin();
     else if(provider) {notice(t('loadingMusic'));provider.play();}
     else {begin();if(song)notice(t('externalSong'));}
@@ -354,7 +477,18 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   env.addEventListener('pagehide',()=>{pause();stopSpeech();},opts);
   function providerState(state) {
     if(destroyed)return;
+    if(timedTracks && expanded && photoTrack()){
+      if(state==='playing')provider?.pause({keepAvailable:true});
+      return;
+    }
+    const wasProviderPlaying=providerPlaying;
     providerPlaying=state==='playing';
+    if(timedTracks && expanded){
+      if(state==='playing' && document.hidden)provider?.pause({keepAvailable:true});
+      else if(state==='playing'){clip?.pause();begin();notice();}
+      else if(state==='paused' && wasProviderPlaying && wanted)pauseSoundtrack();
+      return;
+    }
     if(state==='playing') {
       if((!expanded && !film) || document.hidden){provider?.pause();return;}
       clip?.pause();
@@ -365,7 +499,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     }else if(state==='paused' || state==='ended'){
       if(state==='ended'){finish();return;}
       stopClock();wanted=false;buttons();notice();
-    }else if(state==='ready' && resumeTime>startAt){
+    }else if(state==='ready' && !timedTracks && resumeTime>startAt){
       provider?.seek(resumeTime);resumeTime=0;
     }
   }
@@ -379,31 +513,39 @@ export function mountPlayer(root,day,ctx,viewState={}) {
         }
       },
       onError(reason){
-        if(destroyed)return;
-        stopClock();wanted=false;buttons();
+        if(destroyed || (timedTracks && expanded && photoTrack()))return;
+        if(!timedTracks){stopClock();wanted=false;buttons();}
         notice(t(reason==='blocked'?'providerBlocked':reason==='restricted'?'providerRestricted':'providerUnavailable'));
       }
     });
+    if(timedTracks && dayAudioTime>startAt)provider.seek(dayAudioTime);
     if(muted && audioLink.provider==='youtube')provider.setMuted(true);
   }
   if(audio){
-    audio.preload='metadata';audio.muted=muted;audio.volume=.83;
+    audio.preload='metadata';audio.muted=muted;audio.volume=.83;audio.loop=timedTracks;
     audio.addEventListener('loadedmetadata',()=>{duration=audio.duration;applySeek();},opts);
-    audio.addEventListener('playing',()=>{if(expanded && wanted){begin();notice();}else audio.pause();},opts);
-    audio.addEventListener('waiting',()=>{if(wanted){stopClock();buttons();notice(t('loadingMusic'));}},opts);
-    audio.addEventListener('error',()=>{
-      if(expanded){stopClock();wanted=false;buttons();notice(t('audioUnavailable'));}
+    audio.addEventListener('playing',()=>{
+      if(expanded && wanted && audio.getAttribute('src')===sceneAudioSrc()){begin();notice();}
+      else audio.pause();
     },opts);
-    audio.addEventListener('ended',()=>{position=Math.max(0,photos.length-1);paint();finish();},opts);
+    audio.addEventListener('waiting',()=>{
+      if(wanted && audio.getAttribute('src')===sceneAudioSrc()){stopClock();buttons();notice(t('loadingMusic'));}
+    },opts);
+    audio.addEventListener('error',()=>{
+      if(expanded && wanted && audio.getAttribute('src')===sceneAudioSrc())audioUnavailable();
+    },opts);
+    audio.addEventListener('ended',()=>{if(!timedTracks){position=Math.max(0,photos.length-1);paint();finish();}},opts);
     if(bundled){
       // Whole-file static hosts can report an empty seek range until the MP3 is a blob.
-      fetch(audioSrc,{signal:own.signal}).then(response=>response.ok?response.blob():null).then(blob=>{
+      fetch(dayAudioSrc,{signal:own.signal}).then(response=>response.ok?response.blob():null).then(blob=>{
         if(destroyed || !blob)return;
-        const time=pendingSeek ?? audio.currentTime;
-        pendingSeek=time;audio.src=urlFor({blob});
+        dayAudioSrc=urlFor({blob});
+        if(timedTracks && photoTrack())return;
+        pendingSeek=pendingSeek ?? audio.currentTime;
+        audio.src=dayAudioSrc;
         if(expanded && wanted)playAudio();
       }).catch(()=>{});
-    }else audio.src=audioSrc;
+    }else if(dayAudioSrc)audio.src=dayAudioSrc;
   }
   paint();buttons();
   const cleanup=()=>{
@@ -412,8 +554,9 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     if(audio){audio.removeAttribute('src');audio.load();}
     urls.forEach(url=>URL.revokeObjectURL(url));
   };
-  cleanup.getViewState=()=>({
-    position,muted,time:pendingSeek ?? (provider ? Math.max(startAt,mediaTime()) : mediaTime())
-  });
+  cleanup.getViewState=()=>timedTracks ? {
+    position,muted,time:fallbackTime(),
+    dayAudioTime:photoTrack() ? dayAudioTime : provider?.getCurrentTime() ?? pendingSeek ?? audio.currentTime
+  } : {position,muted,time:pendingSeek ?? (provider ? Math.max(startAt,mediaTime()) : mediaTime())};
   return cleanup;
 }

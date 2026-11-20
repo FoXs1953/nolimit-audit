@@ -26,20 +26,25 @@ async function upload(asset,kind,owner) {
   await api('/uploads/'+id,{method:'POST',body:data.slice(0,data.size,mime),headers:{'X-NoLimit-Account':owner}});
   return id;
 }
+async function uploadTrack(track,owner) {
+  return {kind:'file',assetId:await upload(track,'audio',owner),bpm:track.bpm,energy:track.energy};
+}
 async function snapshot(day,alternative,owner) {
   const recipe=presentRecipe(day);
   const photos=[];
   for (const photo of day.photos) {
-    photos.push({...(isGalleryVideo(photo)?{kind:'video'}:{}),assetId:await upload(photo,'photo',owner),x:photo.x,y:photo.y,color:photo.color});
+    const entry={assetId:await upload(photo,'photo',owner),x:photo.x,y:photo.y,color:photo.color};
+    if(isGalleryVideo(photo)) entry.kind='video';
+    else {
+      if(photo.caption?.trim()) entry.caption=photo.caption;
+      if(photo.music?.kind==='file') entry.music=await uploadTrack(photo.music,owner);
+    }
+    photos.push(entry);
   }
-  const source=day.music, music={kind:source.kind,bpm:source.bpm,energy:source.energy};
-  if(alternative || source.kind==='link'){
-    music.kind='link';music.url=alternative || source.url;
-    music.name=alternative?t('track'):source.name;
-  } else {
-    music.assetId=await upload(source,'audio',owner);
-    music.name=t('track');
-  }
+  const source=day.music;
+  let music=null;
+  if(alternative || source?.kind==='link') music={kind:'link',url:alternative || source.url,name:alternative?t('track'):source.name,energy:source?.energy};
+  else if(source?.kind==='file') music=await uploadTrack(source,owner);
   const {color,mood,motion,tilt,interval,bpm,energy}=recipe;
   return {title:recipe.title,caption:recipe.caption,date:day.date,text:day.text,contentLanguage:storyLanguage(day),
     recipe:{version:1,title:recipe.title,caption:recipe.caption,color,mood,motion,tilt,interval,bpm,energy},photos,music};
@@ -109,9 +114,15 @@ export function openAccess(ctx,{day,publicationId}){
         if(publication && publication.owner.id!==session.user.id)throw Object.assign(new Error(t('otherOwner')),{display:true});
         if(publication && day && binding)await rememberPublication(day.id,pubId,publication.mode,publication.accessVersion);
         if(!publication && binding?.confirmed){await forgetPublication(day.id,binding.id);binding=null;pubId=null;}
-        if(!publication && (!day || day.status!=='ready' || !day.text?.trim() || !day.photos?.length || !day.music))throw Object.assign(new Error(t('notReady')),{display:true});
         const version=publication?.accessVersion || 0, contentVersion=publication?.contentVersion || 0;
-        const selected=new Set(publication?.recipientIds || []), source=day || publication.day;
+        const selected=new Set(publication?.recipientIds || []), source=day || publication?.day;
+        const photoMusic=source?.photos?.some(photo=>!isGalleryVideo(photo) && photo.music?.kind==='file');
+        if(!publication && (source?.status!=='ready' || !source.text?.trim() || !source.photos?.length || (!source.music && !photoMusic)))throw Object.assign(new Error(t('notReady')),{display:true});
+        const trackNames=[];
+        if(source.music)trackNames.push((source.music.kind==='link' && source.music.name) || t('track'));
+        if(photoMusic)trackNames.push(t('photoMusic'));
+        const tracks=trackNames.map(name=>'<span>'+icon('music',16)+esc(name)+'</span>').join('');
+        const rights=esc(t(photoMusic?'photoRights':'rights'));
         const recipe=presentRecipe({...source,status:'ready'});
         let value=publication?.mode || 'private';
         const pictures=(source.photos || []).map(photo=>{
@@ -120,11 +131,11 @@ export function openAccess(ctx,{day,publicationId}){
         }).filter(Boolean);
         const choice=(mode)=>'<label class="social-mode"><input type="radio" name="audience" value="'+mode+'" '+(value===mode?'checked':'')+'><span>'+esc(t(mode))+'</span></label>';
         const candidates=people.friends.map(p=>'<label class="social-friend-check"><input type="checkbox" name="recipient" value="'+esc(p.id)+'" '+(selected.has(p.id)?'checked':'')+'><span>'+esc(p.name)+' <small>'+esc(p.code)+'</small></span></label>').join('');
-        root.innerHTML='<form data-sharing-form><p class="social-as">'+esc(t('as',{name:session.user.name}))+'</p><details class="share-preview" '+(!publication?'open':'')+'><summary>'+esc(t('preview'))+'</summary><div class="share-preview-inner"><strong>'+esc(recipe.title || source.title)+'</strong><p>'+esc(source.text)+'</p><div class="share-images">'+pictures.join('')+'</div><span>'+icon('music',16)+esc(source.music?.kind==='link'?source.music.name || t('track'):t('track'))+'</span></div></details>'+
+        root.innerHTML='<form data-sharing-form><p class="social-as">'+esc(t('as',{name:session.user.name}))+'</p><details class="share-preview" '+(!publication?'open':'')+'><summary>'+esc(t('preview'))+'</summary><div class="share-preview-inner"><strong>'+esc(recipe.title || source.title)+'</strong><p>'+esc(source.text)+'</p><div class="share-images">'+pictures.join('')+'</div>'+tracks+'</div></details>'+
           '<fieldset class="social-audience"><legend>'+esc(t('audience'))+'</legend>'+['private','all','selected'].map(choice).join('')+'</fieldset>'+
           '<p data-mode-hint></p><div data-recipient-area><label>'+esc(t('find'))+'<input type="search" class="day-field" data-find-person></label>'+
           (candidates?'<div class="social-friend-list">'+candidates+'</div><p data-count aria-live="polite"></p>':'<p>'+esc(t('none'))+'</p><button class="secondary" type="button" data-people>'+esc(t('people'))+'</button>')+'</div>'+
-          (day?.music?.kind==='file'?'<fieldset class="share-song"><legend>'+esc(t('track'))+'</legend><select aria-label="'+esc(t('track'))+'" data-song><option value="file">'+esc(t('file'))+'</option><option value="link">'+esc(t('link'))+'</option></select><label hidden data-url-label>'+esc(t('link'))+'<input class="day-field" type="url" data-url placeholder="https://"></label><p>'+esc(t('rights'))+'</p></fieldset>':'')+
+          (day?.music?.kind==='file'?'<fieldset class="share-song"><legend>'+esc(t('track'))+'</legend><select aria-label="'+esc(t('track'))+'" data-song><option value="file">'+esc(t('file'))+'</option><option value="link">'+esc(t('link'))+'</option></select><label hidden data-url-label>'+esc(t('link'))+'<input class="day-field" type="url" data-url placeholder="https://"></label><p>'+rights+'</p></fieldset>':day && photoMusic?'<p class="social-as">'+rights+'</p>':'')+
           '<p data-message role="status"></p><div class="social-actions"><button class="primary" data-save-access type="submit">'+esc(t(publication?'save':'publish'))+'</button>'+
           (day && publication?'<button type="button" class="secondary" data-update>'+esc(t('refresh'))+'</button>':'')+
           '<button type="button" class="secondary" data-cancel>'+esc(t('close'))+'</button></div>'+

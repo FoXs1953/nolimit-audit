@@ -28,6 +28,7 @@ function cleanBase(record) {
 function clamp(value, low, high) { return Math.min(high, Math.max(low,value)); }
 
 const videoTypes = {mp4:'video/mp4', m4v:'video/mp4', webm:'video/webm', mov:'video/quicktime'};
+const audioAccept = 'audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/x-wav,.mp3,.m4a,.aac,.wav';
 
 function capturePoster(video) {
   try {
@@ -188,25 +189,26 @@ function audioCharacter(buffer) {
   const energy = (bpm && bpm>=125) || mean>.027 ? 'bright' : (bpm && bpm<=85) || mean<.008 ? 'calm' : 'steady';
   return {energy, ...(bpm?{bpm}:{}),analyzed:true};
 }
-async function musicFromFile(file) {
+export async function musicFromFile(file) {
   if (!file.size || file.size>25*1024*1024) throw Error(t('audioSize'));
   if (!/\.(?:mp3|m4a|aac|wav)$/i.test(file.name) && !/^audio\/(?:mpeg|mp3|mp4|aac|x-m4a|x-wav|wav|wave)$/i.test(file.type)) {
     throw Error(t('audioTypes'));
   }
-  const duration = await readDuration(file);
+  const ext = file.name.split('.').pop().toLowerCase();
+  const type = ({mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',wav:'audio/wav'})[ext];
+  const blob = type && (!file.type || file.type==='application/octet-stream') ? file.slice(0,file.size,type) : file;
+  const duration = await readDuration(blob);
   let character = {energy:'steady',analyzed:false};
   const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   if (Offline && Number.isFinite(duration) && duration<=600) {
     try {
       const ctx=new Offline(1,1,12000);
-      const buffer=await ctx.decodeAudioData(await file.arrayBuffer());
+      const buffer=await ctx.decodeAudioData(await blob.arrayBuffer());
       character=audioCharacter(buffer);
     } catch { /* Native playback was validated independently. Manual energy is available. */ }
   }
-  const ext = file.name.split('.').pop().toLowerCase();
-  const type = ({mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',wav:'audio/wav'})[ext];
-  const blob = !file.type && type ? file.slice(0,file.size,type) : file;
-  return {kind:'file',name:file.name.replace(/\.[^.]+$/,''),blob,...character};
+  const name = file.name.replace(/\.[^.]+$/,'').trim() || file.name;
+  return {kind:'file',name,blob,...character};
 }
 
 export function mountEditor(root, record, ctx, viewState = {}) {
@@ -227,7 +229,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   let base = record;
   let seq=0, persisted=0, timer, selected=viewState.selected ?? draft.photos[0]?.id, busy=0, disposed=false, committing=false, saveError='';
   let writeQueue=Promise.resolve(), galleryQueue=Promise.resolve(), saveTask=null, importErrors=0;
-  const tasks=new Set(), urls=new Map();
+  const tasks=new Set(), urls=new Map(), photoAudioImports=new Set();
   const controller=new AbortController();
   const $=s=>root.querySelector(s);
   function assetUrl(asset) {
@@ -239,7 +241,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     return typeof asset.src === 'string' && /^(?:\.\/|\/)?diary\/media\/[\w./% -]+$/.test(asset.src) && !asset.src.includes('..') ? asset.src : '';
   }
   function releaseUnusedUrls() {
-    const used = new Set([...draft.photos.map(p=>p.blob),draft.music?.blob]);
+    const used = new Set([...draft.photos.flatMap(p=>[p.blob,p.music?.blob]),draft.music?.blob]);
     for (const [blob,url] of urls) if (!used.has(blob)) {
       URL.revokeObjectURL(url);
       urls.delete(blob);
@@ -270,7 +272,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     if (discard) discard.hidden = !published || (!seq && !record.pendingEdit);
   }
   function snapshot() {
-    const d={...draft, photos:draft.photos.map(p=>({...p})), moments:[...draft.moments], music:draft.music ? {...draft.music} : null};
+    const d={...draft, photos:draft.photos.map(p=>p.music ? {...p,music:{...p.music}} : {...p}), moments:[...draft.moments], music:draft.music ? {...draft.music} : null};
     delete d.pendingEdit;
     return d;
   }
@@ -319,13 +321,18 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     `<label class="ed-field">${t('date')}<input type="date" data-ed-date></label>`+
     `<label class="ed-field">${t('dayText')}<textarea rows="4" data-ed-text maxlength="16000" placeholder="${t('dayPrompt')}"></textarea></label><div data-ed-moments></div></section>`+
     `<section class="panel ed-panel ed-gallery-panel"><div class="ed-head"><h2>${t('photos')}</h2><span data-ed-count></span></div>`+
-    `<div data-ed-gallery></div><button type="button" class="secondary ed-add" data-ed-add-photo>${ctx.icon('plus',17)}${t('addPhoto')}</button>`+
+    '<div data-ed-gallery></div>'+
+    `<details class="ed-photo-story" hidden><summary>${t('photoStory')}</summary>`+
+    `<label class="ed-field">${t('photoCaption')}<textarea rows="2" data-ed-photo-caption maxlength="220" placeholder="${t('photoCaptionPrompt')}"></textarea></label>`+
+    `<div data-ed-photo-track></div><button type="button" class="secondary ed-add" data-ed-add-photo-music>${t('selectPhotoAudio')}</button>`+
+    `<input type="file" hidden accept="${audioAccept}" data-ed-photo-music><p class="ed-help" data-ed-photo-audio-help>${t('photoAudioDefault')}</p></details>`+
+    `<button type="button" class="secondary ed-add" data-ed-add-photo>${ctx.icon('plus',17)}${t('addPhoto')}</button>`+
     '<input type="file" hidden accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" multiple data-ed-photos>'+
     `<p class="ed-help">${t('photoLimit')}</p></section>`+
     `<section class="panel ed-panel"><div class="ed-head"><h2>${t('songOfDay')}</h2></div>`+
     `<div class="ed-switch" role="group" aria-label="${t('musicSource')}"><button type="button" data-ed-mode="file">${t('audioFile')}</button><button type="button" data-ed-mode="link">${t('link')}</button></div>`+
     `<div data-ed-file-pane><div data-ed-current-file></div><button class="secondary ed-add" type="button" data-ed-add-music>${t('selectAudio')}</button>`+
-    '<input type="file" hidden accept="audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/x-wav,.mp3,.m4a,.aac,.wav" data-ed-music>'+
+    `<input type="file" hidden accept="${audioAccept}" data-ed-music>`+
     `<p class="ed-help">${t('audioRights')}</p></div>`+
     `<div data-ed-link-pane hidden><label class="ed-field">${t('songUrl')}<input type="text" inputmode="url" spellcheck="false" autocapitalize="none" autocomplete="off" data-ed-link placeholder="https://…"></label>`+
     `<label class="ed-field">${t('songName')}<input type="text" data-ed-link-name maxlength="120" placeholder="${t('songPrompt')}"></label>`+
@@ -344,7 +351,11 @@ export function mountEditor(root, record, ctx, viewState = {}) {
   date.value=viewState.date ?? draft.date; text.value=draft.text; title.value=draft.titleOverride || '';caption.value=draft.captionOverride || '';
   $('[data-ed-link]').value=draft.linkDraft || ''; $('[data-ed-link-name]').value=draft.linkName || '';
   const photoInput=$('[data-ed-photos]'), musicInput=$('[data-ed-music]');
-  const stateForRecipe=()=>({...draft,music:draft.music?.kind===draft.musicMode?draft.music:null});
+  const photoStory=$('.ed-photo-story'), photoCaption=$('[data-ed-photo-caption]'), photoTrack=$('[data-ed-photo-track]');
+  const photoMusicInput=$('[data-ed-photo-music]'), addPhotoMusic=$('[data-ed-add-photo-music]');
+  const selectedPhoto=()=>draft.photos.find(p=>p.id===selected && !isGalleryVideo(p));
+  const dayTrack=()=>draft.music?.kind===draft.musicMode ? draft.music : null;
+  const stateForRecipe=()=>({...draft,music:dayTrack() || draft.photos.find(p=>p.music)?.music || null});
   function positionOf(asset) {
     return limited(asset.x??50,0,100)+'% '+limited(asset.y??50,0,100)+'%';
   }
@@ -395,6 +406,11 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     if(!draft.photos.some(p=>p.id===selected)) selected=draft.photos[0]?.id;
     $('[data-ed-count]').textContent=draft.photos.length+' / 6';
     $('[data-ed-add-photo]').disabled=draft.photos.length>=6;
+    const photo=selectedPhoto();
+    photoStory.hidden=!photo;
+    photoCaption.value=photo?.caption || '';
+    if(addPhotoMusic.hasAttribute('aria-invalid')) issue('');
+    paintPhotoAudio(photo);
     if(!draft.photos.length) return;
     const index=draft.photos.findIndex(p=>p.id===selected), asset=draft.photos[index];
     const number=(item,i)=>t(isGalleryVideo(item)?'videoNumber':'photoNumber',{n:i+1});
@@ -419,6 +435,23 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     box.innerHTML=`<div class="ed-thumbs" role="group" aria-label="${t('dayPhotos')}">${thumbs}</div>
       <div class="ed-photo-line"><strong>${esc(asset.name)}</strong><span>${index===0?t('cover'):number(asset,index)}</span></div>
       <div class="ed-photo-controls" role="group" aria-label="${esc(asset.name)}">${controls}</div>${preview}`;
+  }
+  function paintPhotoAudio(photo) {
+    const track=photo?.music;
+    photoTrack.querySelector('audio')?.pause();
+    photoTrack.innerHTML=track
+      ? `<div class="ed-track"><strong>${esc(track.name)}</strong><button type="button" class="ed-text-button" data-ed-remove-photo-music>${t('removePhotoAudio')}</button></div>`+
+        `<audio controls preload="none" src="${esc(assetUrl(track))}" aria-label="${t('listenPhotoAudio')}"></audio>`
+      : '';
+    addPhotoMusic.textContent=t(track?'replacePhotoAudio':'selectPhotoAudio');
+    $('[data-ed-photo-audio-help]').hidden=Boolean(track);
+    setPhotoAudioBusy(photo);
+  }
+  function setPhotoAudioBusy(photo) {
+    const pending=photoAudioImports.has(photo);
+    addPhotoMusic.disabled=pending;
+    const remove=photoTrack.querySelector('[data-ed-remove-photo-music]');
+    if(remove)remove.disabled=pending;
   }
   function paintFile() {
     const box=$('[data-ed-current-file]'), track=draft.music;
@@ -468,8 +501,10 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     if (!validDate(date.value)) {issue(t('needDate'),date);return false;}
     if (!draft.text.trim()) {issue(t('needText'),text);return false;}
     if (!draft.photos.length) {issue(t('needPhoto'),$('[data-ed-add-photo]'));return false;}
-    if (!draft.music || draft.music.kind!==draft.musicMode || (draft.musicMode==='link' && !musicLink(draft.linkDraft))) {
-      issue(draft.musicMode==='link' ? t('needLink') : t('needSong'),draft.musicMode==='link'?$('[data-ed-link]'):$('[data-ed-add-music]'));return false;
+    const linkMode=draft.musicMode==='link', hasPhotoMusic=draft.photos.some(p=>p.music);
+    const invalidLink=linkMode && draft.linkDraft.trim() && !musicLink(draft.linkDraft);
+    if (invalidLink || (!dayTrack() && !hasPhotoMusic)) {
+      issue(linkMode ? t('needLink') : t('needSong'),linkMode?$('[data-ed-link]'):$('[data-ed-add-music]'));return false;
     }
     if(draft.titleOverride?.trim() && (wordCount(draft.titleOverride)<3 || wordCount(draft.titleOverride)>7)) {
       $('.ed-custom').open=true;issue(t('titleLength'),title);return false;
@@ -497,7 +532,7 @@ export function mountEditor(root, record, ctx, viewState = {}) {
         fields.inert=true;
         committing=true;
         const recipe=makeRecipe(stateForRecipe());
-        const completed={...snapshot(),id:base.id,revision:base.revision,primary:base.primary,status:'ready',title:recipe.title,caption:recipe.caption,recipe};
+        const completed={...snapshot(),id:base.id,revision:base.revision,primary:base.primary,status:'ready',music:dayTrack(),title:recipe.title,caption:recipe.caption,recipe};
         const saved=await saveDay(completed);
         base=saved;persisted=seq;saveError='';
         return saved;
@@ -567,6 +602,54 @@ export function mountEditor(root, record, ctx, viewState = {}) {
     for (const img of root.querySelectorAll('.ed-thumb[aria-pressed="true"] img,.ed-crop-frame img')) img.style.objectPosition=positionOf(p);
     mark();
   });
+  on(photoCaption,'input',()=>{
+    const photo=selectedPhoto();
+    if(!photo)return;
+    if(photoCaption.value)photo.caption=photoCaption.value;
+    else delete photo.caption;
+    mark();
+  });
+  on(photoStory,'toggle',()=>{if(!photoStory.open)photoTrack.querySelector('audio')?.pause();});
+  on(addPhotoMusic,'click',()=>photoMusicInput.click());
+  on(photoMusicInput,'change',()=>{
+    const file=photoMusicInput.files[0], photo=selectedPhoto();
+    photoMusicInput.value='';
+    if(!file || !photo || photoAudioImports.has(photo))return;
+    issue('');photoAudioImports.add(photo);setPhotoAudioBusy(photo);
+    async function importPhotoAudio() {
+      let failure;
+      try {
+        if(disposed || !draft.photos.includes(photo))return;
+        const music=await musicFromFile(file);
+        if(disposed || !draft.photos.includes(photo))return;
+        const gallery=draft.photos.map(asset=>asset===photo ? {...photo,music} : asset);
+        if(await galleryBytes(gallery)>MAX_GALLERY_BYTES)throw Error(t('galleryTooLarge'));
+        if(disposed || !draft.photos.includes(photo))return;
+        photo.music=music;
+        mark();
+      } catch(error) {
+        failure=error?.message || t('fileProcessError');
+      } finally {
+        photoAudioImports.delete(photo);
+        if(!disposed && selectedPhoto()===photo)paintPhotoAudio(photo);
+        releaseUnusedUrls();
+      }
+      if(failure && !disposed && draft.photos.includes(photo)){
+        importErrors++;
+        issue(failure,selectedPhoto()===photo ? addPhotoMusic : null);
+      }
+    }
+    galleryQueue=galleryQueue.then(importPhotoAudio,importPhotoAudio);
+    track(galleryQueue,addPhotoMusic);
+  });
+  on(photoTrack,'click',e=>{
+    if(!e.target.closest('[data-ed-remove-photo-music]'))return;
+    const photo=selectedPhoto();
+    if(!photo?.music || photoAudioImports.has(photo))return;
+    delete photo.music;
+    paintPhotoAudio(photo);mark();releaseUnusedUrls();
+    addPhotoMusic.focus({preventScroll:true});
+  });
   let audioToken=0;
   on($('[data-ed-add-music]'),'click',()=>musicInput.click());
   on(musicInput,'change',()=>{
@@ -629,23 +712,26 @@ export function mountEditor(root, record, ctx, viewState = {}) {
       for (const other of root.querySelectorAll('audio,video[controls]')) if(other!==e.target && !other.paused) other.pause();
     }
   },true);
-  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();$('[data-ed-current-file] audio')?.pause();pauseSelectedVideo();}});
-  on(window,'pagehide',queueDraft);
+  function pauseMedia() {
+    for(const media of root.querySelectorAll('audio, video[controls]'))media.pause();
+  }
+  on(document,'visibilitychange',()=>{if(document.hidden){queueDraft();pauseMedia();}});
+  on(window,'pagehide',()=>{queueDraft();pauseMedia();});
   paintMoments();paintPhotos();showMode();paintPreview();viewStatus();
   function cleanup() {
     if(disposed)return;
     if(seq>persisted) queueDraft();
     disposed=true;controller.abort();clearTimeout(timer);
-    $('[data-ed-current-file] audio')?.pause();
-    pauseSelectedVideo();
+    pauseMedia();
     for (const url of urls.values()) URL.revokeObjectURL(url);
     urls.clear();
   }
   if(viewState.customOpen) $('.ed-custom').open=true;
   if(viewState.cropOpen && $('.ed-crop')) $('.ed-crop').open=true;
+  if(viewState.photoStoryOpen)photoStory.open=true;
   cleanup.getViewState=()=>({
     selected,date:date.value,
-    customOpen:$('.ed-custom').open,cropOpen:$('.ed-crop')?.open
+    customOpen:$('.ed-custom').open,cropOpen:$('.ed-crop')?.open,photoStoryOpen:photoStory.open
   });
   cleanup.flush=async()=>{
     if (saveTask) await saveTask;

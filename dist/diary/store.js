@@ -15,7 +15,8 @@ const MAX_JSON = 2 * MIB;
 const MAX_IMAGE = 12 * MIB;
 const MAX_VIDEO = 50 * MIB;
 const MAX_AUDIO = 25 * MIB;
-// The saved gallery, its pending edit and both soundtracks must fit in one ZIP.
+// The saved gallery and its pending edit each include their photo soundtracks.
+// Leave room in one ZIP for two day tracks as well.
 export const MAX_GALLERY_BYTES = 90 * MIB;
 const blobHashes = new WeakMap();
 const blobBytes = new WeakMap();
@@ -159,13 +160,21 @@ function checkRecord(row, partial=false) {
   }
   if (row.photos != null) {
     if (!Array.isArray(row.photos) || row.photos.length > 6) throw bad(t('photoLimit'));
-    for (const item of row.photos) checkAsset(item,galleryKind(item));
+    for (const item of row.photos) {
+      const kind=galleryKind(item);
+      checkAsset(item,kind);
+      if (item.caption != null && (typeof item.caption!=='string' || item.caption.length>220)) throw bad(t('textField'));
+      if (item.music != null) {
+        if (kind!=='photo' || item.music.kind!=='file') throw bad(t('invalidContents'));
+        checkAsset(item.music,'audio');
+      }
+    }
   }
   if (row.music != null) {
     if (row.music.kind === 'file') checkAsset(row.music,'audio');
     else if (row.music.kind !== 'link' || !validUrl(row.music.url)) throw bad(t('musicUrl'));
   }
-  if (row.status === 'ready' && (!row.text?.trim() || !row.photos?.length || !row.music)) {
+  if (row.status === 'ready' && (!row.text?.trim() || !row.photos?.length || (!row.music && !row.photos.some(photo=>photo.music)))) {
     throw bad(t('requiredContent'));
   }
   if (row.moments != null && (!Array.isArray(row.moments) || row.moments.some(m => !m || typeof m.text !== 'string'))) throw bad(t('invalidMoments'));
@@ -181,7 +190,11 @@ async function normalizeRecord(input) {
   // Blob content is immutable. Keep its object identity so frequent text autosaves can
   // reuse the digest of a large attachment, without sharing mutable record fields.
   function retainBlobs(copy,source) {
-    copy.photos?.forEach((photo,index)=>{ if (source.photos[index]?.blob instanceof Blob) photo.blob=source.photos[index].blob; });
+    copy.photos?.forEach((photo,index)=>{
+      const original=source.photos[index];
+      if (original?.blob instanceof Blob) photo.blob=original.blob;
+      if (original?.music?.blob instanceof Blob) photo.music.blob=original.music.blob;
+    });
     if (source.music?.blob instanceof Blob && copy.music) copy.music.blob=source.music.blob;
     if (copy.pendingEdit && source.pendingEdit) retainBlobs(copy.pendingEdit,source.pendingEdit);
   }
@@ -238,15 +251,21 @@ export async function localAsset(asset, kind) {
   return promise;
 }
 export async function galleryBytes(photos) {
-  const sizes=await Promise.all(photos.map(async asset=>
-    asset.blob instanceof Blob ? asset.blob.size : (await localAsset(asset,galleryKind(asset))).size));
+  const sizeOf=async (asset,kind)=>asset.blob instanceof Blob ? asset.blob.size : (await localAsset(asset,kind)).size;
+  const sizes=await Promise.all(photos.flatMap(photo=>[
+    sizeOf(photo,galleryKind(photo)),
+    ...(photo.music?.kind==='file' ? [sizeOf(photo.music,'audio')] : [])
+  ]));
   return sizes.reduce((total,size)=>total+size,0);
 }
 async function mapMedia(row, transform) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) throw bad(t('invalidEntry'));
   if (row.photos != null && (!Array.isArray(row.photos) || row.photos.length>6)) throw bad(t('photoLimit'));
   const out={...row};
-  if (out.photos) out.photos=await Promise.all(out.photos.map(asset=>transform(asset,galleryKind(asset))));
+  if (out.photos) out.photos=await Promise.all(out.photos.map(async asset=>{
+    const item=await transform(asset,galleryKind(asset));
+    return asset.music?.kind==='file' ? {...item,music:await transform(asset.music,'audio')} : item;
+  }));
   if (out.music?.kind === 'file') out.music=await transform(out.music,'audio');
   if (out.pendingEdit) out.pendingEdit=await mapMedia(out.pendingEdit,transform);
   return out;
@@ -271,7 +290,10 @@ function decodeDay(row) {
   }
   const day={...row};
   delete day._removedNotes;
-  if (day.photos) day.photos=day.photos.map(decode);
+  if (day.photos) day.photos=day.photos.map(asset=>{
+    const photo=decode(asset);
+    return photo.music?.kind==='file' ? {...photo,music:decode(photo.music)} : photo;
+  });
   if (day.music?.kind==='file') day.music=decode(day.music);
   if (day.pendingEdit) day.pendingEdit=decodeDay(day.pendingEdit);
   return day;

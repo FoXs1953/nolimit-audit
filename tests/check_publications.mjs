@@ -15,6 +15,7 @@ const {outputFiles}=await build({
 });
 const mf=new Miniflare({modules:true,script:outputFiles[0].text,d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-04-01'});
 const id=()=>crypto.randomUUID(), pub=id(), photo=id(), audio=id(), video=id(), otherPhoto=id(), comment=id();
+const photoAudio=id();
 const files=new URL('../dist/diary/media/',import.meta.url);
 const image=await readFile(new URL('river.jpg',files)), song=await readFile(new URL('coffee.mp3',files));
 const webmHeader=Buffer.from([0x1a,0x45,0xdf,0xa3,0x42,0x82,0x84,0x77,0x65,0x62,0x6d]);
@@ -33,7 +34,8 @@ function videoStream(size) {
   });
 }
 const card={title:'River bend',caption:'Spring',text:'An afternoon walk',date:'2026-06-30',
-  recipe:{version:1,color:'#228833',reasons:{private:'never disclose'}},photos:[{assetId:video,kind:'video'},{assetId:photo,name:'private.jpg'}],
+  recipe:{version:1,color:'#228833',reasons:{private:'never disclose'}},photos:[{assetId:video,kind:'video'},
+    {assetId:photo,name:'private.jpg',caption:'By the river',music:{kind:'file',assetId:photoAudio,name:'private.mp3'}}],
   music:{kind:'file',assetId:audio,name:'local_filename'},moments:['private note']};
 const A='anna', B='ilya', C='lena';
 async function request(who,method,path,data,extra={}) {
@@ -68,6 +70,7 @@ try {
   await upload(A,video,videoStream(videoSize),'video/webm');
   await upload(A,id(),image,'video/mp4',415);
   await upload(A,audio,song,'audio/mpeg');
+  await upload(A,photoAudio,song,'audio/mpeg');
   await upload(C,otherPhoto,image,'image/jpeg');
   await upload(A,id(),Buffer.from('<html>'), 'image/png',415);
   const first={day:card,mode:'selected',recipientIds:[B],contentVersion:0,operationId:id()};
@@ -75,6 +78,10 @@ try {
   await publish({...first,day:{...card,photos:[{assetId:otherPhoto}]}},409);
   assert.equal((await api(A,'GET','/mine')).days.length,0);
   await publish({...first,day:{...card,photos:[{assetId:video}]}},409);
+  const still=card.photos[1];
+  await publish({...first,day:{...card,photos:[{...still,caption:'a'.repeat(221)}]}},400);
+  await publish({...first,day:{...card,photos:[{...still,music:{kind:'file',assetId:photo}}]}},409);
+  await publish({...first,day:{...card,music:null,photos:[{assetId:photo}]}},400);
   const saved=await publish(first);
   assert.equal(saved.accessVersion,1);
   assert.deepEqual(saved.recipientIds,[B]);
@@ -82,6 +89,13 @@ try {
   assert.equal(saved.day.moments,undefined);
   assert.equal(saved.day.photos[0].kind,'video');
   assert.equal(saved.day.photos[1].name,undefined);
+  assert.equal(saved.day.photos[1].caption,'By the river');
+  assert.equal(saved.day.photos[1].music.name,undefined);
+  const frameMedia=saved.day.photos[1].music.src.replace('/api/social','');
+  const frameRange=await request(B,'GET',frameMedia,null,{Range:'bytes=0-7'});
+  assert.equal(frameRange.status,206);
+  assert.deepEqual(Buffer.from(await frameRange.arrayBuffer()),song.subarray(0,8));
+  await api(C,'GET',frameMedia,null,404);
   const cover=await request(B,'GET',saved.day.photos[0].src.replace('/api/social',''),null,{Range:'bytes=0-3'});
   assert.equal(cover.status,206);
   assert.equal(cover.headers.get('Content-Type'),'video/webm');
@@ -127,6 +141,7 @@ try {
   await api(A,'PATCH',access,{mode:'all',accessVersion:2},409);
   await api(B,'GET',discussion,null,404);
   await api(B,'GET',media,null,404,{Range:'bytes=3-8'});
+  await api(B,'GET',frameMedia,null,404,{Range:'bytes=0-7'});
   await api(B,'PUT',comments+id(),{text:'revoked'},404);
   await api(B,'PUT',reaction,{kind:'close'},404);
   assert.deepEqual(Object.keys((await api(B,'GET','/my-responses')).comments[0]).sort(),['createdAt','id','publicationId','text']);
@@ -134,20 +149,27 @@ try {
   await api(B,'DELETE','/my-responses/reaction/'+pub);
   assert.deepEqual(await api(B,'GET','/my-responses'),{comments:[],reactions:[]});
   assert.deepEqual(await api(C,'GET',discussion),{comments:[],reactions:[]});
-  const replacement=id();
+  const replacement=id(), replacementAudio=id();
   await upload(A,replacement,image,'image/jpeg');
-  const revised={...card,title:'Later',photos:[{assetId:replacement}]};
+  await upload(A,replacementAudio,song,'audio/mpeg');
+  const revised={...card,title:'Later',music:null,photos:[{assetId:replacement,music:{kind:'file',assetId:replacementAudio}}]};
   assert.equal((await publish({day:revised,mode:'all',contentVersion:1})).mode,'selected');
   await api(B,'GET','/publications/'+pub,null,404);
   await api(A,'GET','/media/'+pub+'/'+photo,null,404);
+  await api(A,'GET',frameMedia,null,404);
   await publish({day:card,contentVersion:1},409);
   await publish({day:card,contentVersion:2},409);
-  assert.equal((await api(C,'GET','/publications/'+pub)).day.title,'Later');
+  const updated=await api(C,'GET','/publications/'+pub);
+  assert.equal(updated.day.title,'Later');
+  assert.equal(updated.day.music,null);
+  const newFrameMedia=updated.day.photos[0].music.src.replace('/api/social','');
+  assert.equal((await request(C,'HEAD',newFrameMedia)).status,200);
   await api(C,'DELETE','/publications/'+pub,null,404);
   await api(A,'DELETE','/publications/'+pub);
   await api(A,'DELETE','/publications/'+pub);
   await api(A,'GET','/publications/'+pub,null,404);
   await api(A,'GET',media,null,404);
+  await api(A,'GET',newFrameMedia,null,404);
   await publish(first,409);
   assert.equal((await api(A,'GET','/mine')).days.length,0);
   assert.deepEqual(await api(C,'GET','/my-responses'),{comments:[],reactions:[]});
