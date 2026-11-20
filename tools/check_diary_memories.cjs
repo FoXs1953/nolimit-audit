@@ -158,7 +158,7 @@ async function main() {
     await assertDays([nextWeek]);
     await applyDates(quickDate,quickDate);
     await assertDays([quickDate]);
-    assert.equal(await track.textContent(),'В этом периоде нет сохранённой музыки.');
+    assert.equal(await track.textContent(),'В этом периоде нет треков, которые можно включить в дневнике.');
     await watch.click();
     await view('day').getByText('Записка о прогулке',{exact:true}).waitFor();
     assert.equal(await view('next').isVisible(),false,'Single-day selections hide paging');
