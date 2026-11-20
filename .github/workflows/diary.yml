@@ -42,4 +42,5 @@ jobs:
           node tools/check_diary_inputs.cjs http://127.0.0.1:8000/
           node tools/check_diary_languages.cjs http://127.0.0.1:8000/
           node tools/check_diary_storage.cjs http://127.0.0.1:8000/
+          node tools/check_diary_memories.cjs http://127.0.0.1:8000/
           node tools/check_diary_offline.cjs http://127.0.0.1:8000/

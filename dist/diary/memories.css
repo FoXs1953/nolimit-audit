@@ -1,0 +1,234 @@
+.memories {
+  display: grid;
+  gap: 16px;
+  max-width: 940px;
+}
+
+.memory-period, .memory-soundtrack {
+  display: grid;
+  gap: 14px;
+  padding: clamp(14px, 2.5vw, 24px);
+}
+
+.memory-period-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memory-period-modes button {
+  padding-inline: 12px;
+}
+
+.memory-period-modes button[aria-pressed="true"] {
+  background: var(--action, var(--blue));
+  color: var(--on-action, #fff);
+}
+
+.memory-period-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.memory-period-nav.custom {
+  grid-template-columns: 1fr;
+}
+
+.memory-period-nav p {
+  margin: 0;
+  text-align: center;
+  font-weight: 660;
+  font-size: clamp(1rem, 2.4vw, 1.25rem);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.memory-period-nav [data-period-step="-1"] svg {
+  rotate: 180deg;
+}
+
+.memory-period-nav button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.memory-dates, .memory-track-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.memory-dates label, .memory-track-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-soundtrack label, .memory-dates label {
+  font-size: .9rem;
+  font-weight: 650;
+}
+
+.memories :is(input[type="date"], input[type="url"], select) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.memories input[type="date"]::-webkit-date-and-time-value {
+  text-align: start;
+}
+
+.memory-track-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.memory-error, .memory-file-status, .memory-soundtrack [data-memory-track] {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: .9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.memory-error {
+  color: #a51f30;
+}
+
+[data-theme="dark"] .memory-error {
+  color: #ff9ba7;
+}
+
+.memory-soundtrack {
+  gap: 8px;
+}
+
+.memory-soundtrack [data-memory-input]:empty {
+  display: none;
+}
+
+.memory-file-status {
+  margin-top: 6px;
+}
+
+.memory-soundtrack [data-memory-track] {
+  color: var(--muted);
+}
+
+.memory-watch {
+  margin: 2px 0 14px;
+}
+
+.memory-days {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-day {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 88px;
+  padding: 8px;
+  text-align: start;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+}
+
+.memory-day:hover {
+  border-color: var(--blue);
+}
+
+.memory-day-cover {
+  height: 70px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.memory-day-cover > * {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  object-fit: cover;
+}
+
+.memory-no-photo {
+  color: var(--muted);
+}
+
+.memory-day-copy {
+  display: grid;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.memory-day-copy time {
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.memory-day-copy strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+[data-memory-more] {
+  margin-top: 12px;
+}
+
+.memories .empty-state button {
+  margin-top: 15px;
+}
+
+@media (max-width: 760px) {
+  .dock {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.42fr) minmax(0, .9fr) minmax(0, 1.15fr);
+    width: min(420px, calc(100% - 16px));
+  }
+
+  .dock button {
+    font-size: clamp(.625rem, 2.85vw, .72rem);
+  }
+}
+
+@media (max-width: 520px) {
+  .memory-days {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-dates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memory-dates button {
+    grid-column: 1 / -1;
+  }
+
+  .memory-track-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

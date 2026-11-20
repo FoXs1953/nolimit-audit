@@ -9,6 +9,8 @@ export const t = translator({
   todayIntro:['Истории, фото, видео и музыка твоих дней.','Күндеріңнен қалған әңгімелер, суреттер, бейнелер мен әуендер.','Stories, photos, videos and music from your days.'],
   archive:['Мои дни','Менің күндерім','My days'],
   archiveShort:['Мои дни','Күндерім','My days'],
+  memories:['Воспоминания','Естеліктер','Memories'],
+  memoriesIntro:['Пересмотри выбранные дни под одним треком.','Таңдаған күндеріңді бір әуенмен қайта көр.','Revisit the days you choose with one soundtrack.'],
   archiveIntro:['Открытки и незаконченные записи на этом устройстве.','Осы құрылғыдағы ашықхаттар мен аяқталмаған жазбалар.','Postcards and unfinished entries on this device.'],
   settings:['Настройки','Баптаулар','Settings'],
   settingsIntro:['Отображение и хранение дневника.','Күнделіктің көрінісі мен сақталуы.','Display and storage for your journal.'],

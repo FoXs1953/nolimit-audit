@@ -188,7 +188,7 @@ function audioCharacter(buffer) {
   const energy = (bpm && bpm>=125) || mean>.027 ? 'bright' : (bpm && bpm<=85) || mean<.008 ? 'calm' : 'steady';
   return {energy, ...(bpm?{bpm}:{}),analyzed:true};
 }
-async function musicFromFile(file) {
+export async function musicFromFile(file) {
   if (!file.size || file.size>25*1024*1024) throw Error(t('audioSize'));
   if (!/\.(?:mp3|m4a|aac|wav)$/i.test(file.name) && !/^audio\/(?:mpeg|mp3|mp4|aac|x-m4a|x-wav|wav|wave)$/i.test(file.type)) {
     throw Error(t('audioTypes'));
