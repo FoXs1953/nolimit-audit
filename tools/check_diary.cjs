@@ -88,10 +88,10 @@ async function journey(browser,dir,errors) {
         constructor(...args){super(...args);window.diaryTestAudio.push(this);}
       };
     });
-    const waitForTrack=seconds=>page.waitForFunction(duration=>{
-      const active=window.diaryTestAudio.filter(audio=>!audio.paused && audio.currentTime>.03);
+    const waitForTrack=(duration,time=.03)=>page.waitForFunction(({duration,time})=>{
+      const active=window.diaryTestAudio.filter(audio=>!audio.paused && audio.currentTime>time);
       return active.length===1 && Math.abs(active[0].duration-duration)<.1;
-    },seconds,{timeout:10000});
+    },{duration,time},{timeout:10000});
     const pickSecond=()=>page.locator('[data-ed-select="1"]').click();
     const photoStory=page.locator('.ed-photo-story');
     const photoCaption=photoStory.locator('[data-ed-photo-caption]');
@@ -140,17 +140,19 @@ async function journey(browser,dir,errors) {
     const viewer=page.getByRole('dialog');
     const trackName=viewer.locator('[data-card="track-name"]');
     const runningText=viewer.locator('[data-card="story-scroll"]');
+    const frameSeconds=await page.locator('.diary-card').evaluate(card=>parseFloat(card.style.getPropertyValue('--day-duration'))/1000);
+    const sceneTimeout=frameSeconds*1000+5000;
     await trackName.filter({hasText:daySong}).waitFor();
     assert.match(await runningText.textContent(),/Тёплый дождь/,'The day story starts with the first frame');
     await waitForTrack(16);
-    await viewer.getByText('2 из 3',{exact:true}).waitFor();
+    await viewer.getByText('2 из 3',{exact:true}).waitFor({timeout:sceneTimeout});
     await trackName.filter({hasText:frameSong}).waitFor();
     assert.equal((await runningText.textContent()).trim(),frameCaption);
     await waitForTrack(7);
-    await viewer.getByText('3 из 3',{exact:true}).waitFor();
+    await viewer.getByText('3 из 3',{exact:true}).waitFor({timeout:sceneTimeout});
     await trackName.filter({hasText:daySong}).waitFor();
     assert.match(await runningText.textContent(),/тучи рассеялись/,'The day story continues after a custom caption');
-    await waitForTrack(16);
+    await waitForTrack(16,frameSeconds*.75);
     await viewer.locator('[data-card="play"][aria-pressed="true"]').click();
     assert.ok(await page.evaluate(()=>window.diaryTestAudio.every(audio=>audio.paused)),'Pausing the postcard stops the active track');
     await by(viewer,'Выключить звук').click();

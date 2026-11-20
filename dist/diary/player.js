@@ -53,7 +53,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
   let dayAudioSrc=music.kind==='file' ? urlFor(music) : '';
   const audio=dayAudioSrc || timedTracks ? new Audio() : null;
   const bundled=localMedia.test(dayAudioSrc);
-  let muted=Boolean(viewState?.muted), destroyed=false, playing=false, wanted=false, finished=false;
+  let muted=Boolean(viewState?.muted), destroyed=false, playing=false, wanted=false, finished=Boolean(timedTracks && viewState?.finished);
   let position=clamp(Number.isInteger(viewState?.position)?viewState.position:0,0,Math.max(0,photos.length-1));
   const startAt=audioLink?.start || 0;
   let resumeTime=Number.isFinite(viewState?.time) ? viewState.time : startAt;
@@ -109,7 +109,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     '</div><div class="viewer-controls"><div class="viewer-transport">'+control('prev','prev',hasVideos?'previousFrame':'previous')+control('play','play','play','viewer-play')+control('next','next',hasVideos?'nextFrame':'next')+'</div>'+
     '<span class="viewer-count" data-card="counter"></span><button type="button" class="viewer-control viewer-mute" data-card="mute"></button></div>'+
     '<label class="ab-scrub" data-card="scrub"><span class="ab-sr">'+html('chooseFrame')+'</span><input aria-label="'+html('chooseFrame')+'" type="range" data-card="seek" min="1" max="'+Math.max(1,photos.length)+'" step="1"></label>'+
-    '<div class="viewer-caption" data-card="story-window" tabindex="0" aria-label="'+html('story')+'"><p data-card="story-scroll" lang="'+lang+'"></p></div>'+
+    '<div class="viewer-caption" data-card="story-window" role="region" tabindex="0" aria-label="'+html('story')+'"><p data-card="story-scroll" lang="'+lang+'"></p></div>'+
     '</div>'+notesSection+'</div></dialog>'+
     '<section class="ab-evidence"'+(readOnly && !film?' hidden':'')+'><h2>'+html('folder')+'</h2>'+
     (film?action('read','document',t('read')):'')+
@@ -180,8 +180,8 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     seek.style.setProperty('--ab-fill',100*position/Math.max(1,photos.length-1)+'%');
     el('prev').disabled=position===0;el('next').disabled=position>=photos.length-1;
     const track=expanded ? photoTrack() : null;
-    el('track-name').textContent=track?.name || (day.music ? sourceName : '');
-    el('track-scope').textContent=track ? t('photoMusic') : film ? '' : t('dayMusic');
+    el('track-name').textContent=track ? track.name || t('photoMusic') : day.music ? sourceName : '';
+    el('track-scope').textContent=track?.name ? t('photoMusic') : !track && !film && music.name ? t('dayMusic') : '';
     el('music').hidden=!track && !day.music;
     el('provider').hidden=!embedded || Boolean(track);
     if(song)el('source').hidden=Boolean(track);
@@ -356,7 +356,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
       playRequest++;audio.pause();
       const src=sceneAudioSrc();
       pendingSeek=src ? (track ? 0 : dayAudioTime) : null;
-      if(!track && manual)provider?.seek(dayAudioTime);
+      if(!track && (manual || lastTrack) && provider && dayAudioTime!==provider.getCurrentTime())provider.seek(dayAudioTime);
       if(!src && audio.hasAttribute('src')){audio.removeAttribute('src');audio.load();}
     }
     if(active)startScene();else buttons();
@@ -555,7 +555,7 @@ export function mountPlayer(root,day,ctx,viewState={}) {
     urls.forEach(url=>URL.revokeObjectURL(url));
   };
   cleanup.getViewState=()=>timedTracks ? {
-    position,muted,time:fallbackTime(),
+    position,muted,finished,time:fallbackTime(),
     dayAudioTime:photoTrack() ? dayAudioTime : provider?.getCurrentTime() ?? pendingSeek ?? audio.currentTime
   } : {position,muted,time:pendingSeek ?? (provider ? Math.max(startAt,mediaTime()) : mediaTime())};
   return cleanup;
