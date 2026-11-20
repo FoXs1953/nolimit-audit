@@ -64,15 +64,15 @@ async function seedJournal(page) {
 async function verifyMobileDock(page) {
   const bounds = await page.locator('#dock').evaluate(dock=>{
     const outer = dock.getBoundingClientRect();
-    const labelsFit = Array.from(dock.querySelectorAll('button')).every(button=>{
+    const overflowingLabels = Array.from(dock.querySelectorAll('button')).filter(button=>{
       const item = button.getBoundingClientRect();
       const label = button.querySelector('span').getBoundingClientRect();
-      return label.left>=item.left-1 && label.right<=item.right+1;
-    });
-    return {left:outer.left,right:outer.right,labelsFit,width:document.documentElement.scrollWidth};
+      return label.left<item.left-1 || label.right>item.right+1;
+    }).map(button=>button.textContent);
+    return {left:outer.left,right:outer.right,overflowingLabels,width:document.documentElement.scrollWidth};
   });
-  assert.ok(bounds.labelsFit && bounds.left>=0 && bounds.right<=320 && bounds.width<=320,
-    'All dock labels and the page fit a 320px viewport');
+  assert.ok(!bounds.overflowingLabels.length && bounds.left>=0 && bounds.right<=320 && bounds.width<=320,
+    'All dock labels and the page fit a 320px viewport: '+JSON.stringify(bounds));
 }
 
 async function main() {
