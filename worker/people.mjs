@@ -121,17 +121,28 @@ function inviteResponse(row, user) {
   return json({ person, status: 'available' });
 }
 
-async function requestFriend(db, token, user) {
-  const [, , state] = await db.batch([
-    // An expired reciprocal request must not occupy the pair's unique index.
-    db.prepare(`DELETE FROM friend_invites WHERE owner_id = ? AND expires_at <= unixepoch()`).bind(user),
+async function acceptInvite(db, token, user) {
+  const [, , , state] = await db.batch([
     db.prepare(`
-      INSERT INTO friend_requests (id, token, owner_id, requester_id)
-      SELECT ?1, i.token, i.owner_id, ?2 FROM friend_invites AS i
-      WHERE i.token = ?3 AND i.owner_id <> ?2 AND i.${activeInvite}
-        AND NOT EXISTS (SELECT 1 FROM friendships WHERE a = min(?2, i.owner_id) AND b = max(?2, i.owner_id))
+      INSERT INTO friendships (a, b, inviter_id, accepted_token, accepted_request_id)
+      SELECT min(i.owner_id, ?2), max(i.owner_id, ?2), i.owner_id, i.token, coalesce(r.id, ?3)
+      FROM friend_invites AS i
+      LEFT JOIN friend_requests AS r ON r.token = i.token AND r.requester_id = ?2
+      WHERE i.token = ?1 AND i.owner_id <> ?2 AND i.${activeInvite}
       ON CONFLICT DO NOTHING
-    `).bind(crypto.randomUUID(), user, token),
+    `).bind(token, user, crypto.randomUUID()),
+    db.prepare(`
+      DELETE FROM friend_invites WHERE token = (
+        SELECT accepted_token FROM friendships WHERE accepted_token = ?1 AND ?2 IN (a, b)
+      )
+    `).bind(token, user),
+    // A request from the other person's link may predate direct acceptance.
+    db.prepare(`
+      DELETE FROM friend_requests
+      WHERE (min(owner_id, requester_id), max(owner_id, requester_id)) = (
+        SELECT a, b FROM friendships WHERE accepted_token = ?1 AND ?2 IN (a, b)
+      )
+    `).bind(token, user),
     findInviteStatus(db, token, user)
   ]);
   return inviteResponse(state.results[0], user);
@@ -203,7 +214,7 @@ export async function handlePeople(request, env, user, path) {
     if (id === 'current' && !action && method === 'DELETE') {
       return revokeInvite(db, user, new URL(request.url).searchParams.get('token'));
     }
-    if (id && action === 'request' && method === 'POST') return requestFriend(db, id, user);
+    if (id && ['accept', 'request'].includes(action) && method === 'POST') return acceptInvite(db, id, user);
   }
   if (group === 'requests' && id) {
     if (action === 'accept' && method === 'POST') return acceptRequest(db, id, user);
