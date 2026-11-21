@@ -144,6 +144,10 @@ async function verifyTheme(page) {
   const setting = page.locator('[data-theme-preference]');
   const applied = value => page.waitForFunction(theme => document.documentElement.dataset.theme===theme,value);
   await page.emulateMedia({colorScheme:'dark'});
+  await applied('light');
+  assert.equal(await setting.inputValue(),'light');
+  await setting.selectOption('system');
+  await page.reload();
   await applied('dark');
   assert.equal(await toggle.getAttribute('aria-pressed'),'true');
   assert.equal(await setting.inputValue(),'system');

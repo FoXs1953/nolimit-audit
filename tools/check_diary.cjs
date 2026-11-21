@@ -438,10 +438,10 @@ async function mixedGallery(browser,dir,errors) {
   try {
     page=await ctx.newPage();logErrors(page,errors);
     await ready(page);
-    assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+    assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     await page.locator('#theme-toggle').click();
     await page.reload();await by(main(page),'Записать день').click();
-    assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
+    assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
     await page.getByRole('textbox',{name:'Текст дня'}).fill('Зелёный свет над рекой.');
     const videoPath=await recordGalleryClip(page,dir);
     await page.locator('[data-ed-photos]').setInputFiles([path.join(media,'river.jpg'),videoPath]);

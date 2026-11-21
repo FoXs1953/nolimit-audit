@@ -2,8 +2,8 @@
 const diaryTheme = (() => {
   const key = 'nolimit:theme';
   const system = window.matchMedia('(prefers-color-scheme: dark)');
-  const preferenceOf = value => value === 'light' || value === 'dark' ? value : 'system';
-  let preference = 'system';
+  const preferenceOf = value => value === 'system' || value === 'dark' ? value : 'light';
+  let preference = 'light';
   try { preference = preferenceOf(localStorage.getItem(key)); } catch {}
 
   function apply() {
@@ -16,8 +16,7 @@ const diaryTheme = (() => {
   function setPreference(value) {
     preference = preferenceOf(value);
     try {
-      if (preference === 'system') localStorage.removeItem(key);
-      else localStorage.setItem(key, preference);
+      localStorage.setItem(key, preference);
     } catch {}
     apply();
   }
