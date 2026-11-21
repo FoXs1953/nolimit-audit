@@ -19,7 +19,6 @@
 @media(min-width:761px) and (max-width:980px) {
   .context i,#ctx-date { display:none; }
 }
-@media(max-width:470px) { .phone-brand strong span { display:none; } }
 @media(max-width:355px) {
   .phone-brand img { display:none; }
   .phone-brand { font-size:16px; }
@@ -45,7 +44,7 @@
   /* Navigation, dialogs and common controls. */
   .rail,.topbar,.dock { background:var(--bg); border-color:var(--line); }
   .rail-foot,.panel:not(.library-item) { border-color:var(--line); }
-  .wordmark-sub,.phone-brand span,.rail-label,.nav-item svg,.context,.ctx-icon,.about,.dock button { color:var(--muted); }
+  .rail-label,.nav-item svg,.context,.ctx-icon,.about,.dock button { color:var(--muted); }
   .context i { color:var(--control-edge); }
   .team-symbol,.secondary,.icon-button,.close,.segmented,.language-switch { color:var(--ink); background:var(--control); }
   .secondary:hover,.icon-button:hover,.about:hover,.nav-item:hover,.grid-list button:hover { background:var(--hover); }

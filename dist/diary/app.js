@@ -268,8 +268,6 @@ function localizeShell(){
   document.querySelector('meta[name="description"]').content=t('description');
   find('skip').textContent=t('skip');
   document.querySelector('.rail').setAttribute('aria-label',t('sidebar'));
-  document.querySelector('.wordmark-sub').textContent=t('journal');
-  document.querySelector('.phone-brand strong span').textContent=t('journal');
   document.querySelector('.rail-label').textContent=t('today');
   find('context-name').textContent=t('personal');
   find('ctx-date').textContent=formatDate(localDate(),{month:'long',year:'numeric'});

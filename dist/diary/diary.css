@@ -108,7 +108,7 @@ textarea:focus-visible,select:focus-visible{outline:3px solid #5085ff;outline-of
   .bar-tools{gap:2px}.topbar .about{width:44px;min-width:44px;padding:0;justify-content:center}
   #about-label{display:none}
 }
-@media(max-width:400px){.phone-brand strong span{display:none}.phone-brand{gap:6px}}
+@media(max-width:400px){.phone-brand{gap:6px}}
 
 .home-personal>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .home-personal>header h2{margin:0}
